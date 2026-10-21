@@ -1,65 +1,139 @@
-import { createContext, useContext, useEffect, useState, useCallback } from "react";
-import { getDatabase } from "../database";
-import { getHotelProfile } from "../services/profile.service";
+import { createContext, useContext, useEffect, useState, useCallback, useMemo, useRef } from "react";
+import { getHotelProfile, saveHotelProfile } from "../services/profile.service";
+
 import { useLicense } from "./LicenseContext";
 
 const ProfileContext = createContext(null);
 
-export const ProfileProvider = ({ children }) => {
+export function ProfileProvider({ children }) {
     const { active, loading: licenseLoading } = useLicense();
 
     const [profile, setProfile] = useState(null);
     const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
     const [error, setError] = useState(null);
 
+    // Evita aplicar respuestas de cargas anteriores.
+    const requestId = useRef(0);
+
     const refresh = useCallback(async () => {
+        const currentRequest = ++requestId.current;
+
         setLoading(true);
         setError(null);
 
         try {
             if (!active) {
                 setProfile(null);
-                return;
+                return null;
             }
 
-            await getDatabase();
-
             const hotel = await getHotelProfile();
-            setProfile(hotel);
+
+            if (currentRequest === requestId.current) {
+                setProfile(hotel);
+            }
+
+            return hotel;
         } catch (err) {
-            setError(err.message);
+            if (currentRequest === requestId.current) {
+                setError(
+                    err?.message ||
+                    "No se pudo cargar el perfil del hotel."
+                );
+            }
+
+            throw err;
         } finally {
-            setLoading(false);
+            if (currentRequest === requestId.current) {
+                setLoading(false);
+            }
         }
     }, [active]);
 
     useEffect(() => {
-        if (!licenseLoading) {
-            refresh();
-        }
+        if (licenseLoading) return;
+
+        refresh().catch((err) => {
+            console.error("Error cargando perfil:", err);
+        });
+
+        return () => {
+            requestId.current += 1;
+        };
     }, [licenseLoading, refresh]);
 
-    const contextValue = {
+    const saveProfile = useCallback(async (data) => {
+        if (!active) {
+            throw new Error(
+                "Necesitas una licencia activa para configurar el hotel."
+            );
+        }
+
+        if (saving) {
+            throw new Error(
+                "Ya se está guardando el perfil."
+            );
+        }
+
+        setSaving(true);
+        setError(null);
+
+        try {
+            const updatedProfile = await saveHotelProfile(data);
+
+            // Actualiza inmediatamente el estado global.
+            setProfile(updatedProfile);
+
+            return updatedProfile;
+        } catch (err) {
+            const message =
+                err?.message ||
+                "No se pudo guardar el perfil del hotel.";
+
+            setError(message);
+            throw err;
+        } finally {
+            setSaving(false);
+        }
+    }, [active, saving]);
+
+    const isConfigured = profile?.isConfigured === true;
+
+    const contextValue = useMemo(() => ({
         profile,
         loading: licenseLoading || loading,
+        saving,
         error,
+        isConfigured,
         refresh,
-        setProfile
-    }
+        saveProfile,
+    }), [
+        profile,
+        licenseLoading,
+        loading,
+        saving,
+        error,
+        isConfigured,
+        refresh,
+        saveProfile,
+    ]);
 
     return (
-        <ProfileContext.Provider value={contextValue}>{children}</ProfileContext.Provider>
+        <ProfileContext.Provider value={contextValue}>
+            {children}
+        </ProfileContext.Provider>
     );
-};
+}
 
-export const useProfile = () => {
+export function useProfile() {
     const context = useContext(ProfileContext);
 
     if (!context) {
         throw new Error(
-            "useProfile requiere ProfileProvider"
+            "useProfile requiere ProfileProvider."
         );
     }
 
     return context;
-};
+}

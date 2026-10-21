@@ -182,7 +182,7 @@ export async function runMigrations(db) {
     const row = await db.getFirstAsync("PRAGMA user_version");
     let version = row?.user_version ?? 0;
 
-    if (version > 2) {
+    if (version > 3) {
         throw new Error(
             "Versión de base de datos no compatible."
         );
@@ -204,7 +204,15 @@ export async function runMigrations(db) {
 
     if (version === 1) {
         await migration002(db);
+        version = 2;
     }
+
+    if (version === 2) {
+        await migration003(db);
+        version = 3;
+    }
+
+    return version;
 }
 
 async function migration002(db) {
@@ -216,5 +224,74 @@ async function migration002(db) {
         `);
 
         await tx.execAsync("PRAGMA user_version = 2");
+    });
+}
+
+async function migration003(db) {
+    await db.withExclusiveTransactionAsync(async (tx) => {
+        await tx.execAsync(`
+            ALTER TABLE hotel_settings
+            ADD COLUMN ruc TEXT;
+
+            ALTER TABLE hotel_settings
+            ADD COLUMN razon_social TEXT;
+
+            ALTER TABLE hotel_settings
+            ADD COLUMN nombre_comercial TEXT;
+
+            ALTER TABLE hotel_settings
+            ADD COLUMN estado_ruc TEXT;
+
+            ALTER TABLE hotel_settings
+            ADD COLUMN condicion_ruc TEXT;
+
+            ALTER TABLE hotel_settings
+            ADD COLUMN tipo_establecimiento TEXT;
+
+            ALTER TABLE hotel_settings
+            ADD COLUMN domicilio_fiscal TEXT;
+
+            ALTER TABLE hotel_settings
+            ADD COLUMN direccion TEXT;
+
+            ALTER TABLE hotel_settings
+            ADD COLUMN departamento TEXT;
+
+            ALTER TABLE hotel_settings
+            ADD COLUMN provincia TEXT;
+
+            ALTER TABLE hotel_settings
+            ADD COLUMN distrito TEXT;
+
+            ALTER TABLE hotel_settings
+            ADD COLUMN telefono TEXT;
+
+            ALTER TABLE hotel_settings
+            ADD COLUMN email TEXT;
+
+            ALTER TABLE hotel_settings
+            ADD COLUMN logo_uri TEXT;
+
+            ALTER TABLE hotel_settings
+            ADD COLUMN licencia_municipal TEXT;
+
+            ALTER TABLE hotel_settings
+            ADD COLUMN registro_hospedaje TEXT;
+
+            ALTER TABLE hotel_settings
+            ADD COLUMN consulta_ruc_realizada INTEGER NOT NULL DEFAULT 0
+            CHECK (consulta_ruc_realizada IN (0, 1));
+
+            ALTER TABLE hotel_settings
+            ADD COLUMN consulta_ruc_fecha TEXT;
+
+            ALTER TABLE hotel_settings
+            ADD COLUMN created_at TEXT;
+
+            ALTER TABLE hotel_settings
+            ADD COLUMN updated_at TEXT;
+
+            PRAGMA user_version = 3;
+        `);
     });
 }

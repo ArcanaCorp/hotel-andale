@@ -1,0 +1,494 @@
+import { useCallback, useMemo, useState } from "react";
+import { ActivityIndicator, Pressable, StyleSheet, TextInput, View } from "react-native";
+import { useFocusEffect, useRouter } from "expo-router";
+import { BedDouble, ChevronRight, CircleAlert, DoorClosed, Plus, Search, Sparkles } from "lucide-react-native";
+import TextField from "../../components/ui/TextField";
+import ScreenTab from "../../components/ui/ScreenTab";
+import Button from "../../components/ui/Button";
+import { listRooms } from "../../services/rooms.service";
+
+const C = {
+    white: "#ffffff",
+    black: "#18181b",
+    gray: "#71717a",
+    border: "#e4e4e7",
+    light: "#f4f4f5",
+    green: "#15803d",
+    greenBg: "#f0fdf4",
+    orange: "#c2410c",
+    orangeBg: "#fff7ed",
+    blue: "#1d4ed8",
+    blueBg: "#eff6ff",
+    red: "#b91c1c",
+    redBg: "#fef2f2",
+};
+
+const STATUS = {
+    AVAILABLE: {
+        label: "Disponible",
+        color: C.green,
+        background: C.greenBg,
+    },
+    OCCUPIED: {
+        label: "Ocupada",
+        color: C.orange,
+        background: C.orangeBg,
+    },
+    CLEANING: {
+        label: "En limpieza",
+        color: C.blue,
+        background: C.blueBg,
+    },
+    MAINTENANCE: {
+        label: "Mantenimiento",
+        color: C.red,
+        background: C.redBg,
+    },
+};
+
+const FILTERS = [
+    { key: "ALL", label: "Todas" },
+    { key: "AVAILABLE", label: "Disponibles" },
+    { key: "OCCUPIED", label: "Ocupadas" },
+    { key: "CLEANING", label: "Limpieza" },
+    { key: "MAINTENANCE", label: "Mantenimiento" },
+];
+
+function SummaryCard({ value, label, Icon }) {
+    return (
+        <View style={styles.summaryCard}>
+            <Icon size={19} color={C.gray} />
+            <TextField
+                label={String(value)}
+                size="2xl"
+                weight="bold"
+            />
+            <TextField
+                label={label}
+                size="xs"
+                color="gray"
+            />
+        </View>
+    );
+}
+
+function RoomCard({ room, onPress }) {
+    const status = STATUS[room.operational_status] || {
+        label: "Sin estado",
+        color: C.gray,
+        background: C.light,
+    };
+
+    return (
+        <Pressable
+            onPress={onPress}
+            style={({ pressed }) => [
+                styles.roomCard,
+                pressed && { opacity: 0.75 },
+            ]}
+        >
+            <View style={styles.roomIcon}>
+                <BedDouble size={23} color={C.black} />
+            </View>
+
+            <View style={styles.roomInfo}>
+                <TextField
+                    label={`Habitación ${room.number}`}
+                    size="md"
+                    weight="semibold"
+                />
+
+                <TextField
+                    label={[
+                        room.room_type,
+                        room.floor ? `Piso ${room.floor}` : null,
+                    ].filter(Boolean).join(" · ")}
+                    size="xs"
+                    color="gray"
+                />
+
+                <View
+                    style={[
+                        styles.statusBadge,
+                        { backgroundColor: status.background },
+                    ]}
+                >
+                    <View
+                        style={[
+                            styles.statusDot,
+                            { backgroundColor: status.color },
+                        ]}
+                    />
+
+                    <TextField
+                        label={status.label}
+                        size="xs"
+                        style={{ color: status.color }}
+                        weight="medium"
+                    />
+                </View>
+            </View>
+
+            <ChevronRight size={19} color={C.gray} />
+        </Pressable>
+    );
+}
+
+export default function RoomsTab() {
+    const router = useRouter();
+
+    const [rooms, setRooms] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
+
+    const [search, setSearch] = useState("");
+    const [filter, setFilter] = useState("ALL");
+
+    const loadRooms = useCallback(async () => {
+        setLoading(true);
+        setError(null);
+
+        try {
+            const data = await listRooms();
+            setRooms(data);
+        } catch (err) {
+            setError(
+                err?.message ||
+                "No se pudieron cargar las habitaciones."
+            );
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
+    useFocusEffect(
+        useCallback(() => {
+            loadRooms();
+        }, [loadRooms])
+    );
+
+    const summary = useMemo(() => ({
+        total: rooms.length,
+        available: rooms.filter(
+            r => r.operational_status === "AVAILABLE"
+        ).length,
+        occupied: rooms.filter(
+            r => r.operational_status === "OCCUPIED"
+        ).length,
+    }), [rooms]);
+
+    const filteredRooms = useMemo(() => {
+        const term = search.trim().toLowerCase();
+
+        return rooms.filter(room => {
+            const matchesStatus =
+                filter === "ALL" ||
+                room.operational_status === filter;
+
+            const matchesSearch =
+                !term ||
+                String(room.number).toLowerCase().includes(term) ||
+                String(room.room_type || "")
+                    .toLowerCase()
+                    .includes(term);
+
+            return matchesStatus && matchesSearch;
+        });
+    }, [rooms, search, filter]);
+
+    return (
+        <ScreenTab>
+            <View style={styles.header}>
+                <View style={{ flex: 1, gap: 5 }}>
+                    <TextField
+                        label="Habitaciones"
+                        size="3xl"
+                        weight="bold"
+                    />
+
+                    <TextField
+                        label="Administra tus espacios y disponibilidad"
+                        size="xs"
+                        color="gray"
+                    />
+                </View>
+
+                <Button
+                    icon={Plus}
+                    iconOnly
+                    size="md"
+                    accessibilityLabel="Agregar habitación"
+                    onPress={() => {
+                        // Pendiente: crear ruta de registro.
+                        // router.push("/habitaciones/nueva");
+                    }}
+                />
+            </View>
+
+            <View style={styles.summary}>
+                <SummaryCard
+                    label="Total"
+                    value={summary.total}
+                    Icon={BedDouble}
+                />
+
+                <SummaryCard
+                    label="Disponibles"
+                    value={summary.available}
+                    Icon={Sparkles}
+                />
+
+                <SummaryCard
+                    label="Ocupadas"
+                    value={summary.occupied}
+                    Icon={DoorClosed}
+                />
+            </View>
+
+            <View style={styles.searchBox}>
+                <Search size={19} color={C.gray} />
+
+                <TextInput
+                    value={search}
+                    onChangeText={setSearch}
+                    placeholder="Buscar por número o tipo..."
+                    placeholderTextColor="#a1a1aa"
+                    style={styles.searchInput}
+                    autoCapitalize="none"
+                />
+            </View>
+
+            <View style={styles.filters}>
+                {FILTERS.map(item => {
+                    const selected = filter === item.key;
+
+                    return (
+                        <Pressable
+                            key={item.key}
+                            onPress={() => setFilter(item.key)}
+                            style={[
+                                styles.filterChip,
+                                selected && styles.filterActive,
+                            ]}
+                        >
+                            <TextField
+                                label={item.label}
+                                size="xs"
+                                weight={
+                                    selected ? "semibold" : "medium"
+                                }
+                                style={{
+                                    color: selected
+                                        ? C.white
+                                        : C.gray,
+                                }}
+                            />
+                        </Pressable>
+                    );
+                })}
+            </View>
+
+            <View style={styles.listHeader}>
+                <TextField
+                    label="Listado de habitaciones"
+                    size="lg"
+                    weight="semibold"
+                />
+
+                <TextField
+                    label={`${filteredRooms.length} resultados`}
+                    size="xs"
+                    color="gray"
+                />
+            </View>
+
+            {loading && rooms.length === 0 ? (
+                <View style={styles.empty}>
+                    <ActivityIndicator
+                        size="large"
+                        color={C.black}
+                    />
+
+                    <TextField
+                        label="Cargando habitaciones..."
+                        size="sm"
+                        color="gray"
+                    />
+                </View>
+            ) : error ? (
+                <View style={styles.empty}>
+                    <CircleAlert size={28} color={C.red} />
+
+                    <TextField
+                        label="Error al cargar habitaciones"
+                        size="sm"
+                        weight="semibold"
+                    />
+
+                    <TextField
+                        label={error}
+                        size="xs"
+                        color="gray"
+                        align="center"
+                    />
+
+                    <Button
+                        text="Reintentar"
+                        variant="secondary"
+                        fullWidth={false}
+                        onPress={loadRooms}
+                    />
+                </View>
+            ) : filteredRooms.length === 0 ? (
+                <View style={styles.empty}>
+                    <BedDouble size={32} color={C.gray} />
+
+                    <TextField
+                        label={
+                            rooms.length === 0
+                                ? "Aún no tienes habitaciones"
+                                : "Sin resultados"
+                        }
+                        size="md"
+                        weight="semibold"
+                    />
+
+                    <TextField
+                        label={
+                            rooms.length === 0
+                                ? "Registra las habitaciones de tu establecimiento para comenzar."
+                                : "Prueba con otro número, tipo o estado."
+                        }
+                        size="xs"
+                        color="gray"
+                        align="center"
+                    />
+                </View>
+            ) : (
+                <View style={styles.roomList}>
+                    {filteredRooms.map(room => (
+                        <RoomCard
+                            key={room.id}
+                            room={room}
+                            onPress={() => {
+                                // Pendiente: detalle de habitación.
+                                // router.push(`/habitaciones/${room.id}`);
+                            }}
+                        />
+                    ))}
+                </View>
+            )}
+        </ScreenTab>
+    );
+}
+
+const styles = StyleSheet.create({
+    header: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 12,
+    },
+    summary: {
+        flexDirection: "row",
+        gap: 10,
+    },
+    summaryCard: {
+        flex: 1,
+        minWidth: 0,
+        backgroundColor: C.white,
+        borderWidth: 1,
+        borderColor: C.border,
+        borderRadius: 14,
+        padding: 12,
+        gap: 7,
+    },
+    searchBox: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 10,
+        backgroundColor: C.white,
+        borderWidth: 1,
+        borderColor: C.border,
+        borderRadius: 12,
+        paddingHorizontal: 14,
+        minHeight: 52,
+    },
+    searchInput: {
+        flex: 1,
+        fontFamily: "Poppins-Regular",
+        fontSize: 13,
+        color: C.black,
+        paddingVertical: 10,
+    },
+    filters: {
+        flexDirection: "row",
+        flexWrap: "wrap",
+        gap: 8,
+    },
+    filterChip: {
+        paddingHorizontal: 13,
+        paddingVertical: 9,
+        borderRadius: 20,
+        borderWidth: 1,
+        borderColor: C.border,
+        backgroundColor: C.white,
+    },
+    filterActive: {
+        backgroundColor: C.black,
+        borderColor: C.black,
+    },
+    listHeader: {
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: 10,
+    },
+    roomList: {
+        gap: 12,
+    },
+    roomCard: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 13,
+        padding: 15,
+        backgroundColor: C.white,
+        borderWidth: 1,
+        borderColor: C.border,
+        borderRadius: 16,
+    },
+    roomIcon: {
+        width: 52,
+        height: 52,
+        borderRadius: 13,
+        backgroundColor: C.light,
+        alignItems: "center",
+        justifyContent: "center",
+    },
+    roomInfo: {
+        flex: 1,
+        gap: 5,
+    },
+    statusBadge: {
+        alignSelf: "flex-start",
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 6,
+        paddingHorizontal: 9,
+        paddingVertical: 5,
+        borderRadius: 8,
+    },
+    statusDot: {
+        width: 7,
+        height: 7,
+        borderRadius: 4,
+    },
+    empty: {
+        padding: 30,
+        backgroundColor: C.white,
+        borderWidth: 1,
+        borderColor: C.border,
+        borderRadius: 16,
+        alignItems: "center",
+        gap: 12,
+    },
+});

@@ -1,33 +1,13 @@
 import { useState } from "react";
-import {
-    Alert,
-    Image,
-    KeyboardAvoidingView,
-    Platform,
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    View,
-    ActivityIndicator,
-} from "react-native";
+import { Alert, Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import * as ImagePicker from "expo-image-picker";
 import * as FileSystem from "expo-file-system/legacy";
-import {
-    Building2,
-    Camera,
-    Search,
-    CheckCircle2,
-    ArrowRight,
-    ShieldCheck,
-    MapPin,
-    WifiOff,
-} from "lucide-react-native";
+import { Building2, Camera, Search, CheckCircle2, ArrowRight, ShieldCheck, MapPin, WifiOff } from "lucide-react-native";
 
 import Button from "../components/ui/Button";
 import TextField from "../components/ui/TextField";
+import { useProfile } from "../context/ProfileContext";
 
 const API_URL = "https://utilities.arcanacorp.dev";
 
@@ -48,6 +28,7 @@ const INITIAL = {
     logoUri: "",
     licenciaMunicipal: "",
     registroHospedaje: "",
+    domicilioFiscal: "",
 };
 
 const TIPOS = [
@@ -118,10 +99,12 @@ function Section({ number, title, description, children }) {
     );
 }
 
-export default function Onboarding({ onComplete }) {
+export default function Onboarding() {
+
+    const { saveProfile, saving } = useProfile();
+
     const [form, setForm] = useState(INITIAL);
     const [loadingRuc, setLoadingRuc] = useState(false);
-    const [saving, setSaving] = useState(false);
     const [consultado, setConsultado] = useState(false);
     const [consultaFecha, setConsultaFecha] = useState(null);
     const [aceptaDeclaracion, setAceptaDeclaracion] = useState(false);
@@ -204,30 +187,13 @@ export default function Onboarding({ onComplete }) {
                 nombreComercial: data.nombreComercial || "",
                 estadoRuc: data.estado || "",
                 condicionRuc: data.condicion || "",
-                nombreHotel:
-                    prev.nombreHotel ||
-                    data.nombreComercial ||
-                    "",
-                direccion:
-                    prev.direccion ||
-                    data.direccion ||
-                    "",
-                departamento:
-                    prev.departamento ||
-                    data.departamento ||
-                    "",
-                provincia:
-                    prev.provincia ||
-                    data.provincia ||
-                    "",
-                distrito:
-                    prev.distrito ||
-                    data.distrito ||
-                    "",
-                telefono:
-                    prev.telefono ||
-                    data.telefonos?.[0] ||
-                    "",
+                nombreHotel: prev.nombreHotel || data.nombreComercial || "",
+                direccion: prev.direccion || data.direccion || "",
+                departamento: prev.departamento || data.departamento || "",
+                provincia: prev.provincia || data.provincia || "",
+                distrito: prev.distrito || data.distrito || "",
+                telefono: prev.telefono || data.telefonos?.[0] || "",
+                domicilioFiscal: data.direccion || "",
             }));
 
             setConsultado(true);
@@ -280,14 +246,24 @@ export default function Onboarding({ onComplete }) {
     async function guardarLogoLocal(uri) {
         if (!uri) return "";
 
-        const directory =
-            FileSystem.documentDirectory + "hotel/";
+        const directory = FileSystem.documentDirectory + "hotel/";
 
         await FileSystem.makeDirectoryAsync(directory, {
             intermediates: true,
         });
 
-        const destination = directory + "logo.jpg";
+        const extension = uri
+            .split("?")[0]
+            .split(".")
+            .pop()
+            ?.toLowerCase();
+
+        const safeExtension = ["jpg", "jpeg", "png", "webp"].includes(extension)
+            ? extension
+            : "jpg";
+
+        const destination =
+            `${directory}logo-${Date.now()}.${safeExtension}`;
 
         await FileSystem.copyAsync({
             from: uri,
@@ -324,12 +300,7 @@ export default function Onboarding({ onComplete }) {
             return;
         }
 
-        if (
-            !form.direccion.trim() ||
-            !form.departamento.trim() ||
-            !form.provincia.trim() ||
-            !form.distrito.trim()
-        ) {
+        if (!form.direccion.trim() || !form.departamento.trim() || !form.provincia.trim() || !form.distrito.trim()) {
             Alert.alert(
                 "Ubicación incompleta",
                 "Completa la dirección, departamento, provincia y distrito del establecimiento."
@@ -353,24 +324,14 @@ export default function Onboarding({ onComplete }) {
             return;
         }
 
-        if (typeof onComplete !== "function") {
-            Alert.alert(
-                "Almacenamiento pendiente",
-                "Debes conectar esta pantalla con el guardado local del perfil."
-            );
-            return;
-        }
-
-        setSaving(true);
+        let newLogoUri = "";
 
         try {
-            const logoUri = await guardarLogoLocal(
-                form.logoUri
-            );
+            newLogoUri = await guardarLogoLocal(form.logoUri);
 
             const profile = {
                 ...form,
-                logoUri,
+                logoUri: newLogoUri,
                 razonSocial: form.razonSocial.trim(),
                 nombreHotel: form.nombreHotel.trim(),
                 direccion: form.direccion.trim(),
@@ -383,33 +344,22 @@ export default function Onboarding({ onComplete }) {
                 createdAt: new Date().toISOString(),
             };
 
-            await onComplete(profile);
+            await saveProfile(profile);
         } catch (error) {
-            Alert.alert(
-                "No se pudo guardar",
-                error?.message ||
-                "Inténtalo nuevamente."
-            );
-        } finally {
-            setSaving(false);
+            if (newLogoUri) {
+                await FileSystem.deleteAsync(newLogoUri, {
+                    idempotent: true,
+                }).catch(() => {});
+            }
+
+            Alert.alert("No se pudo guardar", error?.message || "Inténtalo nuevamente.");
         }
     }
 
     return (
         <SafeAreaView style={styles.screen}>
-            <KeyboardAvoidingView
-                style={{ flex: 1 }}
-                behavior={
-                    Platform.OS === "ios"
-                        ? "padding"
-                        : undefined
-                }
-            >
-                <ScrollView
-                    keyboardShouldPersistTaps="handled"
-                    showsVerticalScrollIndicator={false}
-                    contentContainerStyle={styles.content}
-                >
+            <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+                <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
                     <View style={styles.brandRow}>
                         <View style={styles.brandIcon}>
                             <Building2 size={22} color="#fff" />
@@ -501,6 +451,14 @@ export default function Onboarding({ onComplete }) {
                                 update("nombreComercial", v)
                             }
                             placeholder="Opcional"
+                        />
+
+                        <Field
+                            label="Domicilio fiscal"
+                            value={form.domicilioFiscal}
+                            onChangeText={v => update("domicilioFiscal", v)}
+                            placeholder="Dirección registrada en SUNAT"
+                            multiline
                         />
 
                         {!!form.estadoRuc && (

@@ -85,15 +85,17 @@ export const tokens = {
     // =====================================
 
     colors: {
-
         primary: amaranth[600],
-
         white: "#FFFFFF",
         black: "#181818",
-
         gray: "#888888",
-
-        border: "#E8E8E8",
+        background: "#fafafa",
+        text: "#18181b",
+        muted: "#71717a",
+        border: "#e4e4e7",
+        light: "#f4f4f5",
+        green: "#15803d",
+        orange: "#c2410c",
     },
 
 

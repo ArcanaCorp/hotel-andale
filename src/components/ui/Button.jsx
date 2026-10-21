@@ -1,8 +1,15 @@
-import { Pressable, ActivityIndicator, StyleSheet, View } from "react-native";
+
+import {
+    Pressable,
+    ActivityIndicator,
+    StyleSheet,
+    View
+} from "react-native";
+
 import TextField from "./TextField";
 import { tokens } from "../../styles/tokens";
 
-const { palette, colors, radius, size, opacity } = tokens;
+const { palette, colors, opacity } = tokens;
 
 const variants = {
     primary: {
@@ -38,21 +45,21 @@ const variants = {
 
 const sizes = {
     sm: {
-        height: size.buttonSm,
+        height: tokens.size.buttonSm,
         paddingHorizontal: tokens.spacing[3],
         fontSize: "sm",
         iconSize: tokens.iconSize.xs
     },
 
     md: {
-        height: size.buttonMd,
+        height: tokens.size.buttonMd,
         paddingHorizontal: tokens.spacing[4],
         fontSize: "md",
         iconSize: tokens.iconSize.sm
     },
 
     lg: {
-        height: size.buttonLg,
+        height: tokens.size.buttonLg,
         paddingHorizontal: tokens.spacing[5],
         fontSize: "md",
         iconSize: tokens.iconSize.md
@@ -68,6 +75,7 @@ export default function Button({
     size: buttonSize = "md",
     icon: Icon,
     rightIcon: RightIcon,
+    iconOnly = false,
     loading = false,
     disabled = false,
     fullWidth = true,
@@ -82,9 +90,11 @@ export default function Button({
     const dimensions = sizes[buttonSize] ?? sizes.md;
 
     const isDisabled = disabled || loading;
+    const isLink = variant === "link" && !iconOnly;
+
     const foreground = iconColor ?? appearance.textColor;
 
-    const isLink = variant === "link";
+    const squareSize = dimensions.height;
 
     return (
         <Pressable
@@ -103,21 +113,78 @@ export default function Button({
             style={({ pressed }) => [
                 styles.button,
                 {
-                    minHeight: isLink ? undefined : dimensions.height,
-                    paddingHorizontal: isLink ? 0 : dimensions.paddingHorizontal,
-                    paddingVertical: isLink ? 0 : undefined,
+                    width: iconOnly ? squareSize : undefined,
+                    height: iconOnly ? squareSize : undefined,
+
+                    minHeight:
+                        iconOnly
+                            ? undefined
+                            : isLink
+                                ? undefined
+                                : dimensions.height,
+
+                    paddingHorizontal:
+                        iconOnly || isLink
+                            ? 0
+                            : dimensions.paddingHorizontal,
+
+                    paddingVertical: 0,
+
                     backgroundColor: appearance.backgroundColor,
                     borderColor: appearance.borderColor,
-                    borderWidth: isLink ? 0 : tokens.borderWidth.thin,
-                    borderRadius: isLink ? 0 : tokens.radius[buttonRadius] ?? tokens.radius.lg,
-                    alignSelf: isLink ? "flex-start" : fullWidth ? "stretch" : "flex-start",
-                    opacity: isDisabled ? opacity.disabled : pressed ? opacity.pressed : 1
+
+                    borderWidth: isLink
+                        ? 0
+                        : tokens.borderWidth.thin,
+
+                    borderRadius: isLink
+                        ? 0
+                        : tokens.radius[buttonRadius] ??
+                          tokens.radius.lg,
+
+                    alignSelf: iconOnly
+                        ? "flex-start"
+                        : isLink
+                            ? "flex-start"
+                            : fullWidth
+                                ? "stretch"
+                                : "flex-start",
+
+                    opacity: isDisabled
+                        ? opacity.disabled
+                        : pressed
+                            ? opacity.pressed
+                            : 1
                 },
-                style
+
+                style,
+
+                // Garantiza el cuadrado incluso con estilos externos.
+                iconOnly && {
+                    width: squareSize,
+                    height: squareSize,
+                    minWidth: squareSize,
+                    minHeight: squareSize,
+                    maxWidth: squareSize,
+                    maxHeight: squareSize,
+                    padding: 0,
+                    alignItems: "center",
+                    justifyContent: "center"
+                }
             ]}
         >
             {loading ? (
-                <ActivityIndicator color={foreground} />
+                <ActivityIndicator
+                    color={foreground}
+                    size="small"
+                />
+            ) : iconOnly ? (
+                Icon ? (
+                    <Icon
+                        size={dimensions.iconSize}
+                        color={foreground}
+                    />
+                ) : null
             ) : (
                 <View style={styles.content}>
                     {Icon && (
@@ -150,7 +217,6 @@ export default function Button({
 
 const styles = StyleSheet.create({
     button: {
-        borderWidth: tokens.borderWidth.thin,
         alignItems: "center",
         justifyContent: "center"
     },
