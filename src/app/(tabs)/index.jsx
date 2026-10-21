@@ -167,7 +167,7 @@ export default function IndexTab() {
                     )}
 
                     {rooms?.total === 0 && (
-                        <Pressable style={styles.setupBanner} onPress={() => router.push("/habitaciones")}>
+                        <Pressable style={styles.setupBanner} onPress={() => router.push("/rooms")}>
                             <View style={{ flex: 1, gap: 4 }}>
                                 <TextField label="Configura tus habitaciones" size="sm" weight="semibold" />
                                 <TextField label="Registra tus habitaciones para comenzar a operar." size="xs" color="gray" />

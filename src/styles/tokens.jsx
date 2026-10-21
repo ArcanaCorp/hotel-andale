@@ -95,7 +95,13 @@ export const tokens = {
         border: "#e4e4e7",
         light: "#f4f4f5",
         green: "#15803d",
+        greenBg: "#f0fdf4",
         orange: "#c2410c",
+        orangeBg: "#fff7ed",
+        blue: "#1d4ed8",
+        blueBg: "#eff6ff",
+        red: "#b91c1c",
+        redBg: "#fef2f2",
     },
 
 

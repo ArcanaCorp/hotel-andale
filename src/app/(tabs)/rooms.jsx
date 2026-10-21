@@ -1,11 +1,13 @@
 import { useCallback, useMemo, useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, TextInput, View } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
-import { BedDouble, ChevronRight, CircleAlert, DoorClosed, Plus, Search, Sparkles } from "lucide-react-native";
+import { BedDouble, CircleAlert, DoorClosed, Plus, Search, Sparkles } from "lucide-react-native";
 import TextField from "../../components/ui/TextField";
 import ScreenTab from "../../components/ui/ScreenTab";
 import Button from "../../components/ui/Button";
 import { listRooms } from "../../services/rooms.service";
+import RoomCard from "../../components/RoomCard";
+import { FILTERS } from "../../constants/rooms";
 
 const C = {
     white: "#ffffff",
@@ -23,37 +25,6 @@ const C = {
     redBg: "#fef2f2",
 };
 
-const STATUS = {
-    AVAILABLE: {
-        label: "Disponible",
-        color: C.green,
-        background: C.greenBg,
-    },
-    OCCUPIED: {
-        label: "Ocupada",
-        color: C.orange,
-        background: C.orangeBg,
-    },
-    CLEANING: {
-        label: "En limpieza",
-        color: C.blue,
-        background: C.blueBg,
-    },
-    MAINTENANCE: {
-        label: "Mantenimiento",
-        color: C.red,
-        background: C.redBg,
-    },
-};
-
-const FILTERS = [
-    { key: "ALL", label: "Todas" },
-    { key: "AVAILABLE", label: "Disponibles" },
-    { key: "OCCUPIED", label: "Ocupadas" },
-    { key: "CLEANING", label: "Limpieza" },
-    { key: "MAINTENANCE", label: "Mantenimiento" },
-];
-
 function SummaryCard({ value, label, Icon }) {
     return (
         <View style={styles.summaryCard}>
@@ -69,68 +40,6 @@ function SummaryCard({ value, label, Icon }) {
                 color="gray"
             />
         </View>
-    );
-}
-
-function RoomCard({ room, onPress }) {
-    const status = STATUS[room.operational_status] || {
-        label: "Sin estado",
-        color: C.gray,
-        background: C.light,
-    };
-
-    return (
-        <Pressable
-            onPress={onPress}
-            style={({ pressed }) => [
-                styles.roomCard,
-                pressed && { opacity: 0.75 },
-            ]}
-        >
-            <View style={styles.roomIcon}>
-                <BedDouble size={23} color={C.black} />
-            </View>
-
-            <View style={styles.roomInfo}>
-                <TextField
-                    label={`Habitación ${room.number}`}
-                    size="md"
-                    weight="semibold"
-                />
-
-                <TextField
-                    label={[
-                        room.room_type,
-                        room.floor ? `Piso ${room.floor}` : null,
-                    ].filter(Boolean).join(" · ")}
-                    size="xs"
-                    color="gray"
-                />
-
-                <View
-                    style={[
-                        styles.statusBadge,
-                        { backgroundColor: status.background },
-                    ]}
-                >
-                    <View
-                        style={[
-                            styles.statusDot,
-                            { backgroundColor: status.color },
-                        ]}
-                    />
-
-                    <TextField
-                        label={status.label}
-                        size="xs"
-                        style={{ color: status.color }}
-                        weight="medium"
-                    />
-                </View>
-            </View>
-
-            <ChevronRight size={19} color={C.gray} />
-        </Pressable>
     );
 }
 
@@ -200,49 +109,16 @@ export default function RoomsTab() {
         <ScreenTab>
             <View style={styles.header}>
                 <View style={{ flex: 1, gap: 5 }}>
-                    <TextField
-                        label="Habitaciones"
-                        size="3xl"
-                        weight="bold"
-                    />
-
-                    <TextField
-                        label="Administra tus espacios y disponibilidad"
-                        size="xs"
-                        color="gray"
-                    />
+                    <TextField label="Habitaciones" size="3xl" weight="bold" />
+                    <TextField label="Administra tus espacios y disponibilidad" size="xs" color="gray" />
                 </View>
-
-                <Button
-                    icon={Plus}
-                    iconOnly
-                    size="md"
-                    accessibilityLabel="Agregar habitación"
-                    onPress={() => {
-                        // Pendiente: crear ruta de registro.
-                        // router.push("/habitaciones/nueva");
-                    }}
-                />
+                <Button icon={Plus} iconOnly size="md" accessibilityLabel="Agregar habitación" onPress={() => router.push("/rooms/new")}/>
             </View>
 
             <View style={styles.summary}>
-                <SummaryCard
-                    label="Total"
-                    value={summary.total}
-                    Icon={BedDouble}
-                />
-
-                <SummaryCard
-                    label="Disponibles"
-                    value={summary.available}
-                    Icon={Sparkles}
-                />
-
-                <SummaryCard
-                    label="Ocupadas"
-                    value={summary.occupied}
-                    Icon={DoorClosed}
-                />
+                <SummaryCard label="Total" value={summary.total} Icon={BedDouble}/>
+                <SummaryCard label="Disponibles" value={summary.available} Icon={Sparkles}/>
+                <SummaryCard label="Ocupadas" value={summary.occupied} Icon={DoorClosed}/>
             </View>
 
             <View style={styles.searchBox}>
@@ -258,7 +134,7 @@ export default function RoomsTab() {
                 />
             </View>
 
-            <View style={styles.filters}>
+            <ScrollView style={styles.filters} horizontal showsHorizontalScrollIndicator={false}>
                 {FILTERS.map(item => {
                     const selected = filter === item.key;
 
@@ -286,58 +162,24 @@ export default function RoomsTab() {
                         </Pressable>
                     );
                 })}
-            </View>
+            </ScrollView>
 
             <View style={styles.listHeader}>
-                <TextField
-                    label="Listado de habitaciones"
-                    size="lg"
-                    weight="semibold"
-                />
-
-                <TextField
-                    label={`${filteredRooms.length} resultados`}
-                    size="xs"
-                    color="gray"
-                />
+                <TextField label="Listado de habitaciones" size="lg" weight="semibold" />
+                <TextField label={`${filteredRooms.length} resultados`} size="xs" color="gray" />
             </View>
 
             {loading && rooms.length === 0 ? (
                 <View style={styles.empty}>
-                    <ActivityIndicator
-                        size="large"
-                        color={C.black}
-                    />
-
-                    <TextField
-                        label="Cargando habitaciones..."
-                        size="sm"
-                        color="gray"
-                    />
+                    <ActivityIndicator size="large" color={C.black} />
+                    <TextField label="Cargando habitaciones..." size="sm" color="gray" />
                 </View>
             ) : error ? (
                 <View style={styles.empty}>
                     <CircleAlert size={28} color={C.red} />
-
-                    <TextField
-                        label="Error al cargar habitaciones"
-                        size="sm"
-                        weight="semibold"
-                    />
-
-                    <TextField
-                        label={error}
-                        size="xs"
-                        color="gray"
-                        align="center"
-                    />
-
-                    <Button
-                        text="Reintentar"
-                        variant="secondary"
-                        fullWidth={false}
-                        onPress={loadRooms}
-                    />
+                    <TextField label="Error al cargar habitaciones" size="sm" weight="semibold" />
+                    <TextField label={error} size="xs" color="gray" align="center" />
+                    <Button text="Reintentar" variant="secondary" fullWidth={false} onPress={loadRooms} />
                 </View>
             ) : filteredRooms.length === 0 ? (
                 <View style={styles.empty}>
@@ -367,14 +209,7 @@ export default function RoomsTab() {
             ) : (
                 <View style={styles.roomList}>
                     {filteredRooms.map(room => (
-                        <RoomCard
-                            key={room.id}
-                            room={room}
-                            onPress={() => {
-                                // Pendiente: detalle de habitación.
-                                // router.push(`/habitaciones/${room.id}`);
-                            }}
-                        />
+                        <RoomCard key={room.id} room={room} onPress={() => router.push({pathname: '/rooms/[id]', params: { id: String(room.id) }})}/>
                     ))}
                 </View>
             )}
@@ -422,7 +257,6 @@ const styles = StyleSheet.create({
     },
     filters: {
         flexDirection: "row",
-        flexWrap: "wrap",
         gap: 8,
     },
     filterChip: {
@@ -432,6 +266,7 @@ const styles = StyleSheet.create({
         borderWidth: 1,
         borderColor: C.border,
         backgroundColor: C.white,
+        marginRight: 8
     },
     filterActive: {
         backgroundColor: C.black,

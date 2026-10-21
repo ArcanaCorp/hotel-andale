@@ -1,0 +1,16 @@
+export const ROOM_AMENITIES = [
+    { key: "WIFI", label: "Wi-Fi" },
+    { key: "TV", label: "Televisión" },
+    { key: "PRIVATE_BATH", label: "Baño privado" },
+    { key: "HOT_WATER", label: "Agua caliente" },
+    { key: "AIR_CONDITIONING", label: "Aire acondicionado" },
+    { key: "FAN", label: "Ventilador" },
+    { key: "HEATING", label: "Calefacción" },
+    { key: "DESK", label: "Escritorio" },
+    { key: "WARDROBE", label: "Ropero" },
+    { key: "TOWELS", label: "Toallas" },
+    { key: "BREAKFAST", label: "Desayuno" },
+    { key: "MINIBAR", label: "Minibar" },
+    { key: "BALCONY", label: "Balcón" },
+    { key: "PARKING", label: "Estacionamiento" },
+];

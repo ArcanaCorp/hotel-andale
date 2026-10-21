@@ -1,4 +1,3 @@
-
 import {
     Pressable,
     ActivityIndicator,
@@ -40,6 +39,12 @@ const variants = {
         backgroundColor: palette.red[600],
         borderColor: palette.red[600],
         textColor: colors.white
+    },
+
+    dangerSoft: {
+        backgroundColor: "rgba(220, 38, 38, 0.10)",
+        borderColor: "transparent",
+        textColor: palette.red[600]
     }
 };
 

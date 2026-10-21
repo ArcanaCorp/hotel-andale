@@ -182,7 +182,7 @@ export async function runMigrations(db) {
     const row = await db.getFirstAsync("PRAGMA user_version");
     let version = row?.user_version ?? 0;
 
-    if (version > 3) {
+    if (version > 11) {
         throw new Error(
             "Versión de base de datos no compatible."
         );
@@ -210,6 +210,41 @@ export async function runMigrations(db) {
     if (version === 2) {
         await migration003(db);
         version = 3;
+    }
+
+    if (version === 3) {
+        await migration004(db);
+        version = 4;
+    }
+
+    if (version === 4) {
+        await migration005(db);
+        version = 5;
+    }
+
+    if (version === 5) {
+        await migration006(db);
+        version = 6;
+    }
+
+    if (version === 6) {
+        await migration007(db);
+        version = 8;
+    }
+
+    if (version === 8) {
+        await migration009(db);
+        version = 9;
+    }
+
+    if (version === 9) {
+        await migration010(db);
+        version = 10;
+    }
+
+    if (version === 10) {
+        await migration011(db);
+        version = 11;
     }
 
     return version;
@@ -292,6 +327,279 @@ async function migration003(db) {
             ADD COLUMN updated_at TEXT;
 
             PRAGMA user_version = 3;
+        `);
+    });
+}
+
+async function migration004(db) {
+    await db.withExclusiveTransactionAsync(async (tx) => {
+        await tx.execAsync(`
+            ALTER TABLE room_types
+            ADD COLUMN photo_uri TEXT;
+
+            CREATE TABLE IF NOT EXISTS room_type_amenities (
+                room_type_id INTEGER NOT NULL,
+                amenity_key TEXT NOT NULL,
+
+                PRIMARY KEY (room_type_id, amenity_key),
+
+                FOREIGN KEY (room_type_id)
+                    REFERENCES room_types(id)
+                    ON DELETE CASCADE
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_room_type_amenities_type
+            ON room_type_amenities(room_type_id);
+        `);
+
+        await tx.runAsync("PRAGMA user_version = 4");
+    });
+}
+
+async function migration005(db) {
+    await db.withExclusiveTransactionAsync(async tx => {
+        await tx.execAsync(`
+            ALTER TABLE rooms
+            ADD COLUMN description TEXT;
+
+            ALTER TABLE rooms
+            ADD COLUMN photo_uri TEXT;
+
+            CREATE TABLE IF NOT EXISTS room_amenities (
+                room_id INTEGER NOT NULL,
+                amenity_key TEXT NOT NULL,
+                PRIMARY KEY (room_id, amenity_key),
+                FOREIGN KEY (room_id)
+                    REFERENCES rooms(id)
+                    ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS room_rates (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                room_id INTEGER NOT NULL,
+                billing_mode TEXT NOT NULL
+                    CHECK (billing_mode IN ('HOURLY', 'NIGHTLY')),
+                price_cents INTEGER NOT NULL
+                    CHECK (price_cents >= 0),
+                is_active INTEGER NOT NULL DEFAULT 1
+                    CHECK (is_active IN (0,1)),
+                UNIQUE (room_id, billing_mode),
+                FOREIGN KEY (room_id)
+                    REFERENCES rooms(id)
+                    ON DELETE CASCADE
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_room_amenities_room
+            ON room_amenities(room_id);
+        `);
+
+        await tx.runAsync("PRAGMA user_version = 5");
+    });
+}
+
+async function migration006(db) {
+    await db.withExclusiveTransactionAsync(async tx => {
+        await tx.execAsync(`
+            CREATE TABLE IF NOT EXISTS hotel_floors (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                number INTEGER NOT NULL UNIQUE
+                    CHECK (number >= 0),
+                is_active INTEGER NOT NULL DEFAULT 1
+                    CHECK (is_active IN (0,1))
+            );
+        `);
+
+        await tx.runAsync("PRAGMA user_version = 6");
+    });
+}
+
+async function migration007(db) {
+    await db.withExclusiveTransactionAsync(async tx => {
+        const columns = await tx.getAllAsync(
+            "PRAGMA table_info(reservations)"
+        );
+
+        const existing = new Set(
+            columns.map(column => column.name)
+        );
+
+        if (!existing.has("booking_code")) {
+            await tx.execAsync(
+                "ALTER TABLE reservations ADD COLUMN booking_code TEXT"
+            );
+        }
+
+        if (!existing.has("qr_token")) {
+            await tx.execAsync(
+                "ALTER TABLE reservations ADD COLUMN qr_token TEXT"
+            );
+        }
+
+        await tx.execAsync(`
+            CREATE UNIQUE INDEX IF NOT EXISTS
+                idx_reservations_booking_code
+                ON reservations(booking_code);
+
+            CREATE UNIQUE INDEX IF NOT EXISTS
+                idx_reservations_qr_token
+                ON reservations(qr_token);
+        `);
+
+        // Las reservas anteriores reciben un código estable.
+        await tx.execAsync(`
+            UPDATE reservations
+            SET booking_code =
+                'RSV-' || printf('%06d', id)
+            WHERE booking_code IS NULL;
+        `);
+
+        await tx.execAsync("PRAGMA user_version = 8");
+    });
+}
+
+async function migration009(db) {
+    await db.withExclusiveTransactionAsync(async tx => {
+        const columns = await tx.getAllAsync(
+            "PRAGMA table_info(guests)"
+        );
+
+        const existing = new Set(
+            columns.map(column => column.name)
+        );
+
+        const additions = {
+            email: "TEXT",
+            birth_date: "TEXT",
+            sex: "TEXT",
+            origin: "TEXT",
+        };
+
+        for (const [name, type] of Object.entries(additions)) {
+            if (!existing.has(name)) {
+                await tx.execAsync(
+                    `ALTER TABLE guests ADD COLUMN ${name} ${type}`
+                );
+            }
+        }
+
+        await tx.execAsync("PRAGMA user_version = 9");
+    });
+}
+
+async function migration010(db) {
+    await db.execAsync(`
+        CREATE TABLE IF NOT EXISTS cash_sessions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+            opened_at TEXT NOT NULL,
+            closed_at TEXT,
+
+            opening_amount_cents INTEGER NOT NULL DEFAULT 0
+                CHECK(opening_amount_cents >= 0),
+
+            closing_amount_cents INTEGER
+                CHECK(
+                    closing_amount_cents IS NULL
+                    OR closing_amount_cents >= 0
+                ),
+
+            expected_amount_cents INTEGER,
+
+            difference_cents INTEGER,
+
+            status TEXT NOT NULL DEFAULT 'OPEN'
+                CHECK(status IN ('OPEN', 'CLOSED')),
+
+            opening_notes TEXT,
+            closing_notes TEXT
+        );
+
+        CREATE UNIQUE INDEX IF NOT EXISTS
+            idx_cash_one_open_session
+        ON cash_sessions(status)
+        WHERE status = 'OPEN';
+
+        CREATE TABLE IF NOT EXISTS cash_movements (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+            session_id INTEGER NOT NULL,
+
+            type TEXT NOT NULL
+                CHECK(type IN ('INCOME', 'EXPENSE')),
+
+            category TEXT NOT NULL,
+
+            description TEXT,
+
+            amount_cents INTEGER NOT NULL
+                CHECK(amount_cents > 0),
+
+            payment_method TEXT NOT NULL
+                CHECK(payment_method IN (
+                    'CASH',
+                    'YAPE',
+                    'PLIN',
+                    'TRANSFER',
+                    'CARD'
+                )),
+
+            created_at TEXT NOT NULL,
+
+            FOREIGN KEY(session_id)
+                REFERENCES cash_sessions(id)
+                ON DELETE RESTRICT
+        );
+
+        CREATE INDEX IF NOT EXISTS
+            idx_cash_movements_session
+        ON cash_movements(session_id);
+
+        CREATE INDEX IF NOT EXISTS
+            idx_cash_movements_created
+        ON cash_movements(created_at);
+    `);
+}
+
+async function migration011(db) {
+    await db.withExclusiveTransactionAsync(async tx => {
+        const columns = await tx.getAllAsync(
+            "PRAGMA table_info(payments)"
+        );
+
+        const existing = new Set(
+            columns.map(column => column.name)
+        );
+
+        if (!existing.has("notes")) {
+            await tx.execAsync(`
+                ALTER TABLE payments
+                ADD COLUMN notes TEXT;
+            `);
+        }
+
+        if (!existing.has("cash_movement_id")) {
+            await tx.execAsync(`
+                ALTER TABLE payments
+                ADD COLUMN cash_movement_id INTEGER
+                REFERENCES cash_movements(id)
+                ON DELETE RESTRICT;
+            `);
+        }
+
+        await tx.execAsync(`
+            CREATE UNIQUE INDEX IF NOT EXISTS
+                idx_payments_cash_movement
+            ON payments(cash_movement_id);
+
+            CREATE INDEX IF NOT EXISTS
+                idx_payments_reservation
+            ON payments(reservation_id);
+
+            CREATE INDEX IF NOT EXISTS
+                idx_payments_created
+            ON payments(created_at);
+
+            PRAGMA user_version = 11;
         `);
     });
 }

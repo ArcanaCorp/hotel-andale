@@ -3,12 +3,13 @@ import { useCallback, useMemo, useState } from "react";
 import {
     ActivityIndicator,
     Pressable,
+    ScrollView,
     StyleSheet,
     TextInput,
     View,
 } from "react-native";
 
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 
 import {
     CalendarDays,
@@ -263,6 +264,9 @@ function BookingCard({ booking, currency, onPress }) {
 }
 
 export default function BookingsTab() {
+
+    const router = useRouter();
+
     const { profile } = useProfile();
 
     const currency = profile?.currency || "PEN";
@@ -365,28 +369,10 @@ export default function BookingsTab() {
         <ScreenTab>
             <View style={styles.header}>
                 <View style={{ flex: 1, gap: 5 }}>
-                    <TextField
-                        label="Reservas"
-                        size="3xl"
-                        weight="bold"
-                    />
-
-                    <TextField
-                        label="Organiza las próximas estadías"
-                        size="xs"
-                        color="gray"
-                    />
+                    <TextField label="Reservas" size="3xl" weight="bold" />
+                    <TextField label="Organiza las próximas estadías" size="xs" color="gray" />
                 </View>
-
-                <Button
-                    icon={Plus}
-                    iconOnly
-                    size="md"
-                    accessibilityLabel="Nueva reserva"
-                    onPress={() => {
-                        // Pendiente: formulario de nueva reserva.
-                    }}
-                />
+                <Button icon={Plus} iconOnly size="md" accessibilityLabel="Nueva reserva" onPress={() => router.push('/booking/new')} />
             </View>
 
             <View style={styles.summary}>
@@ -422,7 +408,7 @@ export default function BookingsTab() {
                 />
             </View>
 
-            <View style={styles.filters}>
+            <ScrollView style={styles.filters} horizontal showsHorizontalScrollIndicator={false}>
                 {FILTERS.map(item => {
                     const selected = filter === item.key;
 
@@ -450,7 +436,7 @@ export default function BookingsTab() {
                         </Pressable>
                     );
                 })}
-            </View>
+            </ScrollView>
 
             <View style={styles.listHeader}>
                 <TextField
@@ -535,9 +521,7 @@ export default function BookingsTab() {
                             key={booking.id}
                             booking={booking}
                             currency={currency}
-                            onPress={() => {
-                                // Pendiente: detalle de reserva.
-                            }}
+                            onPress={() => router.push({ pathname: "/booking/confirmation", params: { id: String(booking.id) }})}
                         />
                     ))}
                 </View>
@@ -586,7 +570,6 @@ const styles = StyleSheet.create({
     },
     filters: {
         flexDirection: "row",
-        flexWrap: "wrap",
         gap: 8,
     },
     filterChip: {
@@ -596,6 +579,7 @@ const styles = StyleSheet.create({
         borderWidth: 1,
         borderColor: C.border,
         backgroundColor: C.white,
+        marginRight: 8
     },
     filterActive: {
         backgroundColor: C.black,

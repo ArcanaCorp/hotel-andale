@@ -1,4 +1,5 @@
 import { getDatabase } from "../database";
+import { findGuestByDocument } from "../database/repositories/guests.repository";
 
 export async function listGuests() {
     const db = await getDatabase();
@@ -66,4 +67,8 @@ export async function listGuests() {
             g.created_at DESC,
             g.id DESC
     `);
+}
+
+export async function findGuestByIdentity(documentType, documentNumber) {
+    return findGuestByDocument(documentType, documentNumber);
 }
