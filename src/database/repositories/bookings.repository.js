@@ -204,9 +204,9 @@ export async function createBooking(data) {
 
         const now = new Date().toISOString();
 
-        const sentenceInsertReservation = `INSERT INTO reservations (room_id, guest_id, billing_mode, start_at, end_at, status, agreed_price_cents, notes, created_at) VALUES (?, ?, ?, ?, ?, 'PENDING', ?, ?, ?)`
+        const sentenceInsertReservation = `INSERT INTO reservations (room_id, guest_id, billing_mode, start_at, end_at, status, agreed_price_cents, notes, booking_origin, created_at) VALUES (?, ?, ?, ?, ?, 'PENDING', ?, ?, ?, ?)`
 
-        const result = await tx.runAsync(sentenceInsertReservation, [ data.roomId, guestId, data.billingMode, data.startAt, data.endAt, data.priceCents, data.notes || null, now]);
+        const result = await tx.runAsync(sentenceInsertReservation, [ data.roomId, guestId, data.billingMode, data.startAt, data.endAt, data.priceCents, data.notes || null, data.bookingOrigin || 'DIRECT', now]);
 
         const bookingId = Number(result.lastInsertRowId);
 
@@ -264,6 +264,32 @@ export async function createBooking(data) {
 
         if (!savedBooking ||!savedBooking.booking_code ||!savedBooking.qr_token) throw new Error("La reserva no pudo verificarse correctamente.");
 
+        if (data.depositCents > 0) {
+            const session = await tx.getFirstAsync(
+                "SELECT id FROM cash_sessions WHERE status = 'OPEN' LIMIT 1"
+            );
+            if (!session) {
+                throw new Error("Debes abrir una caja para registrar un adelanto.");
+            }
+            const movement = await tx.runAsync(`
+                INSERT INTO cash_movements
+                    (session_id, type, category, description, amount_cents, payment_method, created_at)
+                VALUES (?, 'INCOME', 'Cobro de hospedaje', ?, ?, ?, ?)
+            `, [
+                session.id, `Adelanto reserva ${bookingCode}`,
+                data.depositCents, data.depositMethod, now,
+            ]);
+            await tx.runAsync(`
+                INSERT INTO payments
+                    (reservation_id, amount_cents, method, type, reference, notes, cash_movement_id, created_at)
+                VALUES (?, ?, ?, 'PAYMENT', ?, ?, ?, ?)
+            `, [
+                bookingId, data.depositCents, data.depositMethod,
+                data.depositReference || null, "Adelanto inicial de reserva",
+                movement.lastInsertRowId, now,
+            ]);
+        }
+
         createdBookingId = bookingId;
     });
 
@@ -289,6 +315,7 @@ export async function getBookingConfirmation(id) {
             b.billing_mode,
             b.agreed_price_cents,
             b.notes,
+            b.booking_origin,
             r.number AS room_number,
             r.floor AS room_floor,
             rt.name AS room_type,
