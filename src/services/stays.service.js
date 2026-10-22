@@ -1,3 +1,4 @@
+import { canCheckIn, canCheckOut, canMarkRoomClean } from "./stay-lifecycle.rules.mjs";
 
 import { getDatabase } from "../database";
 
@@ -300,10 +301,12 @@ export async function confirmCheckIn(
             );
         }
 
-        if (
-            reservation.room_is_active !== 1 ||
-            reservation.operational_status !== "AVAILABLE"
-        ) {
+        if (!canCheckIn({
+            reservationStatus: reservation.status,
+            roomStatus: reservation.operational_status,
+            roomActive: reservation.room_is_active === 1,
+            existingStay: false,
+        })) {
             throw new Error(
                 "La habitación no está disponible."
             );
@@ -554,7 +557,11 @@ export async function confirmCheckOut(stayId) {
 
         const balance = await getPaymentBalance(tx, stay);
 
-        if (balance.balanceCents > 0) {
+        if (!canCheckOut({
+            stayStatus: stay.status,
+            roomStatus: "OCCUPIED",
+            balanceCents: balance.balanceCents,
+        })) {
             throw new Error(
                 `Hay un saldo pendiente de ${money(balance.balanceCents)}. Registra el pago antes del check-out.`
             );
