@@ -14,70 +14,52 @@ export async function listReceivableReservations() {
 
     return db.getAllAsync(`
         SELECT
-            r.id,
-            r.booking_code,
-            r.status,
-            r.agreed_price_cents,
-
-            g.first_name,
-            g.last_name,
-
-            rm.number AS room_number,
-
-            COALESCE(
-                SUM(p.amount_cents),
-                0
-            ) AS paid_cents
-
+            r.id, r.booking_code, r.status, r.agreed_price_cents,
+            g.first_name, g.last_name, rm.number AS room_number,
+            COALESCE((
+                SELECT SUM(CASE WHEN p.type = 'REFUND'
+                    THEN -p.amount_cents ELSE p.amount_cents END)
+                FROM payments p
+                LEFT JOIN stays s ON s.id = p.stay_id
+                WHERE p.reservation_id = r.id OR s.reservation_id = r.id
+            ), 0) AS paid_cents,
+            r.agreed_price_cents + COALESCE((
+                SELECT SUM(c.total_cents)
+                FROM charges c JOIN stays s ON s.id = c.stay_id
+                WHERE s.reservation_id = r.id
+            ), 0) AS total_cents
         FROM reservations r
-
-        JOIN guests g
-            ON g.id = r.guest_id
-
-        JOIN rooms rm
-            ON rm.id = r.room_id
-
-        LEFT JOIN payments p
-            ON p.reservation_id = r.id
-
-        WHERE r.status IN (
-            'PENDING',
-            'CONFIRMED',
-            'CHECKED_IN'
-        )
-
-        GROUP BY r.id
-
-        HAVING
-            r.agreed_price_cents -
-            COALESCE(SUM(p.amount_cents), 0) > 0
-
+        JOIN guests g ON g.id = r.guest_id
+        JOIN rooms rm ON rm.id = r.room_id
+        WHERE r.status IN ('PENDING', 'CONFIRMED', 'CHECKED_IN')
+          AND (
+              r.agreed_price_cents + COALESCE((
+                  SELECT SUM(c.total_cents)
+                  FROM charges c JOIN stays s ON s.id = c.stay_id
+                  WHERE s.reservation_id = r.id
+              ), 0)
+              - COALESCE((
+                  SELECT SUM(CASE WHEN p.type = 'REFUND'
+                      THEN -p.amount_cents ELSE p.amount_cents END)
+                  FROM payments p
+                  LEFT JOIN stays s ON s.id = p.stay_id
+                  WHERE p.reservation_id = r.id OR s.reservation_id = r.id
+              ), 0)
+          ) > 0
         ORDER BY r.start_at DESC
     `);
 }
 
 export async function listPayments() {
     const db = await getDatabase();
-
     return db.getAllAsync(`
-        SELECT
-            p.*,
-            r.booking_code,
-            g.first_name,
-            g.last_name,
-            rm.number AS room_number
-
+        SELECT p.*, r.booking_code, g.first_name, g.last_name,
+               rm.number AS room_number
         FROM payments p
-
-        JOIN reservations r
-            ON r.id = p.reservation_id
-
-        JOIN guests g
-            ON g.id = r.guest_id
-
-        JOIN rooms rm
-            ON rm.id = r.room_id
-
+        LEFT JOIN stays s ON s.id = p.stay_id
+        JOIN reservations r ON r.id = COALESCE(p.reservation_id, s.reservation_id)
+        JOIN guests g ON g.id = r.guest_id
+        JOIN rooms rm ON rm.id = r.room_id
         ORDER BY p.created_at DESC, p.id DESC
     `);
 }
@@ -126,7 +108,8 @@ export async function getPaymentsSummary() {
 export async function registerPayment(data) {
     const db = await getDatabase();
 
-    return db.withExclusiveTransactionAsync(async tx => {
+    let createdPaymentId = null;
+    await db.withExclusiveTransactionAsync(async tx => {
         const reservationId = Number(
             data.reservationId
         );
@@ -188,22 +171,26 @@ export async function registerPayment(data) {
             );
         }
 
-        const paid = await tx.getFirstAsync(
-            `
-            SELECT
-                COALESCE(
-                    SUM(amount_cents),
-                    0
-                ) AS total
-            FROM payments
-            WHERE reservation_id = ?
-            `,
-            [reservationId]
-        );
+        const paid = await tx.getFirstAsync(`
+            SELECT COALESCE(SUM(
+                CASE WHEN p.type = 'REFUND' THEN -p.amount_cents
+                ELSE p.amount_cents END
+            ), 0) AS total
+            FROM payments p
+            LEFT JOIN stays s ON s.id = p.stay_id
+            WHERE p.reservation_id = ? OR s.reservation_id = ?
+        `, [reservationId, reservationId]);
+
+        const charges = await tx.getFirstAsync(`
+            SELECT COALESCE(SUM(c.total_cents), 0) AS total
+            FROM charges c JOIN stays s ON s.id = c.stay_id
+            WHERE s.reservation_id = ?
+        `, [reservationId]);
 
         const remaining =
-            reservation.agreed_price_cents -
-            paid.total;
+            reservation.agreed_price_cents +
+            Number(charges?.total || 0) -
+            Number(paid?.total || 0);
 
         if (amountCents > remaining) {
             throw new Error(
@@ -277,6 +264,8 @@ export async function registerPayment(data) {
             ]
         );
 
-        return result.lastInsertRowId;
+        createdPaymentId = result.lastInsertRowId;
     });
+
+    return createdPaymentId;
 }
