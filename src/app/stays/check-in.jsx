@@ -201,7 +201,7 @@ export default function CheckInScreen() {
                     icon={ArrowLeft}
                     iconOnly
                     variant="ghost"
-                    onPress={() => router.back()}
+                    onPress={() => router.replace("/(tabs)/bookings")}
                 />
 
                 <View style={{ flex: 1 }}>

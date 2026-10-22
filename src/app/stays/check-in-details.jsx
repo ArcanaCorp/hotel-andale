@@ -2,7 +2,7 @@ import { useCallback, useState } from "react";
 import { ActivityIndicator, Alert, StyleSheet, TextInput, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
-import { ArrowLeft, BedDouble, CalendarDays, CheckCircle2, UserRound } from "lucide-react-native";
+import { ArrowLeft, BedDouble, CalendarDays, CheckCircle2, UserRound, QrCode } from "lucide-react-native";
 
 import ScreenTab from "../../components/ui/ScreenTab";
 import TextField from "../../components/ui/TextField";
@@ -94,7 +94,7 @@ export default function CheckInScreen() {
                                     {
                                         text: "Entendido",
                                         onPress: () =>
-                                            router.replace("/(tabs)/bookings"),
+                                            router.replace({ pathname: "/booking/details", params: { id: String(reservationId) } }),
                                     },
                                 ]
                             );
@@ -197,6 +197,14 @@ export default function CheckInScreen() {
                             />
                         </View>
                     </View>
+
+                    <Button
+                        text="Ver comprobante y QR"
+                        icon={QrCode}
+                        variant="secondary"
+                        disabled={saving}
+                        onPress={() => router.push({ pathname: "/booking/confirmation", params: { id: String(reservationId) } })}
+                    />
 
                     <Button
                         text="Confirmar check-in"
