@@ -27,6 +27,8 @@ export async function getDashboardSummary() {
         roomCounts,
         income,
         departures,
+        arrivals,
+        pendingCleaning,
     ] = await Promise.all([
         db.getFirstAsync(`
             SELECT
@@ -81,6 +83,20 @@ export async function getDashboardSummary() {
             ORDER BY s.scheduled_check_out_at ASC
             LIMIT 10
         `, [endOfDay]),
+        db.getFirstAsync(`
+            SELECT COUNT(*) AS total
+            FROM reservations
+            WHERE status IN ('PENDING', 'CONFIRMED')
+              AND start_at >= ?
+              AND start_at < ?
+        `, [startOfDay, endOfDay]),
+
+        db.getFirstAsync(`
+            SELECT COUNT(*) AS total
+            FROM rooms
+            WHERE is_active = 1
+              AND operational_status = 'CLEANING'
+        `),
     ]);
 
     return {
@@ -93,6 +109,8 @@ export async function getDashboardSummary() {
             maintenance: roomCounts?.maintenance ?? 0,
         },
         incomeCents: income?.total_cents ?? 0,
+        arrivalsToday: arrivals?.total ?? 0,
+        pendingCleaning: pendingCleaning?.total ?? 0,
         departures,
     };
 }
