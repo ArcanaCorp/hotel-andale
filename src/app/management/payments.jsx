@@ -602,7 +602,7 @@ export default function PaymentsScreen() {
                                     <TextField
                                         label={
                                             `Pendiente: ${money(
-                                                item.agreed_price_cents -
+                                                item.total_cents -
                                                 item.paid_cents
                                             )}`
                                         }
