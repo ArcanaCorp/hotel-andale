@@ -405,7 +405,7 @@ export default function PaymentsScreen() {
                             style={styles.paymentRow}
                         >
                             <View style={styles.paymentIcon}>
-                                {item.payment_method ===
+                                {item.method ===
                                 "CASH" ? (
                                     <Banknote
                                         size={21}
@@ -445,26 +445,69 @@ export default function PaymentsScreen() {
                                         METHODS.find(
                                             method =>
                                                 method.value ===
-                                                item.payment_method
+                                                item.method
                                         )?.label ||
-                                        item.payment_method
+                                        item.method
                                     }
                                     size="xs"
                                     color="gray"
                                 />
                             </View>
 
-                            <TextField
-                                label={money(
-                                    item.amount_cents
+                            <View style={{ alignItems: "flex-end", gap: 5 }}>
+                                <TextField
+                                    label={`${item.type === "REFUND" ? "−" : "+"}${money(item.amount_cents)}`}
+                                    size="sm"
+                                    weight="semibold"
+                                />
+                                {item.type === "PAYMENT" && (
+                                    <Button text="Devolver" size="sm" variant="secondary"
+                                        onPress={() => openRefund(item)} />
                                 )}
-                                size="sm"
-                                weight="semibold"
-                            />
+                            </View>
                         </View>
                     ))
                 )}
             </View>
+
+            <BottomSheet
+                visible={refundSheet}
+                title="Registrar devolución"
+                busy={saving}
+                onClose={() => setRefundSheet(false)}
+            >
+                <View style={styles.sheet}>
+                    <TextField label="Reserva asociada" size="sm" color="gray" />
+                    <TextField label={String(refundReservationId || "—")} size="md" weight="semibold" />
+                    <Field label="Monto a devolver (S/)">
+                        <TextInput value={refundAmount} onChangeText={setRefundAmount}
+                            keyboardType="decimal-pad" placeholder="0.00" style={styles.input} />
+                    </Field>
+                    <Field label="Método de devolución">
+                        <View style={styles.methods}>
+                            {METHODS.map(method => (
+                                <Pressable key={method.value}
+                                    onPress={() => setRefundMethod(method.value)}
+                                    style={[styles.method, refundMethod === method.value && styles.methodSelected]}>
+                                    <TextField label={method.label} size="xs" />
+                                </Pressable>
+                            ))}
+                        </View>
+                    </Field>
+                    {refundMethod !== "CASH" && (
+                        <Field label="Número de operación">
+                            <TextInput value={refundReference} onChangeText={setRefundReference}
+                                placeholder="Referencia de devolución" style={styles.input} />
+                        </Field>
+                    )}
+                    <Field label="Motivo de devolución">
+                        <TextInput value={refundReason} onChangeText={setRefundReason}
+                            placeholder="Motivo obligatorio" style={styles.input} />
+                    </Field>
+                    <Button text="Registrar devolución" variant="secondary"
+                        disabled={saving} loading={saving} onPress={handleRefund} />
+                </View>
+            </BottomSheet>
 
             {/* REGISTRAR COBRO */}
             <BottomSheet
