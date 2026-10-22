@@ -1,6 +1,66 @@
 import * as Crypto from "expo-crypto";
 import { getDatabase } from "../index";
 
+
+function localTimestamp(date = new Date()) {
+    const pad = n => String(n).padStart(2, "0");
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
+
+/**
+ * Disponibilidad para el intervalo solicitado, no solo el estado actual.
+ * Mantenimiento bloquea siempre. Una estadía vencida aún activa bloquea
+ * hasta que se registre el check-out.
+ */
+function availabilityCondition() {
+    return `
+        r.is_active = 1
+        AND rt.is_active = 1
+        AND r.operational_status <> 'MAINTENANCE'
+        AND (
+            r.operational_status = 'AVAILABLE'
+            OR (
+                ? > ?
+                AND (
+                    r.operational_status = 'CLEANING'
+                    OR (
+                        r.operational_status = 'OCCUPIED'
+                        AND EXISTS (
+                            SELECT 1 FROM stays current_stay
+                            WHERE current_stay.room_id = r.id
+                              AND current_stay.status = 'ACTIVE'
+                              AND current_stay.scheduled_check_out_at > ?
+                        )
+                    )
+                )
+            )
+        )
+        AND NOT EXISTS (
+            SELECT 1 FROM reservations b
+            WHERE b.room_id = r.id
+              AND b.status IN ('PENDING', 'CONFIRMED', 'CHECKED_IN')
+              AND b.start_at < ?
+              AND b.end_at > ?
+        )
+        AND NOT EXISTS (
+            SELECT 1 FROM stays s
+            WHERE s.room_id = r.id
+              AND s.status = 'ACTIVE'
+              AND (
+                  s.scheduled_check_out_at <= ?
+                  OR (
+                      s.check_in_at < ?
+                      AND s.scheduled_check_out_at > ?
+                  )
+              )
+        )
+    `;
+}
+
+function availabilityParams(startAt, endAt, now) {
+    return [startAt, now, now, endAt, startAt, now, endAt, startAt];
+}
+
 // =====================================================
 // CONSULTAR HABITACIONES DISPONIBLES
 // =====================================================
@@ -40,40 +100,10 @@ export async function getBookingRooms(startAt, endAt) {
         JOIN room_types rt
             ON rt.id = r.room_type_id
 
-        WHERE r.is_active = 1
-          AND rt.is_active = 1
-
-          -- Solo habitaciones listas para ocuparse.
-          AND r.operational_status = 'AVAILABLE'
-
-          -- Reservas pendientes o confirmadas
-          -- que se cruzan con el horario solicitado.
-          AND NOT EXISTS (
-              SELECT 1
-              FROM reservations b
-              WHERE b.room_id = r.id
-                AND b.status IN (
-                    'PENDING',
-                    'CONFIRMED'
-                )
-                AND b.start_at < ?
-                AND b.end_at > ?
-          )
-
-          -- Una estadía activa bloquea la habitación
-          -- independientemente de su salida programada.
-          AND NOT EXISTS (
-              SELECT 1
-              FROM stays s
-              WHERE s.room_id = r.id
-                AND s.status = 'ACTIVE'
-          )
+        WHERE ${availabilityCondition()}
 
         ORDER BY r.number COLLATE NOCASE
-    `, [
-        endAt,
-        startAt,
-    ]);
+    `, availabilityParams(startAt, endAt, localTimestamp()));
 }
 
 export async function createBooking(data) {
@@ -95,38 +125,10 @@ export async function createBooking(data) {
                 ON rt.id = r.room_type_id
 
             WHERE r.id = ?
-              AND r.is_active = 1
-              AND rt.is_active = 1
-              AND r.operational_status = 'AVAILABLE'
-
-              -- No permitir reservas superpuestas.
-              AND NOT EXISTS (
-                  SELECT 1
-                  FROM reservations b
-                  WHERE b.room_id = r.id
-                    AND b.status IN (
-                        'PENDING',
-                        'CONFIRMED'
-                    )
-                    AND b.start_at < ?
-                    AND b.end_at > ?
-              )
-
-              -- No permitir reservar una habitación
-              -- con una estadía todavía activa.
-              AND NOT EXISTS (
-                  SELECT 1
-                  FROM stays s
-                  WHERE s.room_id = r.id
-                    AND s.status = 'ACTIVE'
-              )
+              AND ${availabilityCondition()}
 
             LIMIT 1
-        `, [
-            data.roomId,
-            data.endAt,
-            data.startAt,
-        ]);
+        `, [data.roomId, ...availabilityParams(data.startAt, data.endAt, localTimestamp())]);
 
         if (!room) {
             throw new Error(
