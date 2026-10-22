@@ -83,7 +83,6 @@ export async function getDashboardSummary() {
             ORDER BY s.scheduled_check_out_at ASC
             LIMIT 10
         `, [endOfDay]),
-,
         db.getFirstAsync(`
             SELECT COUNT(*) AS total
             FROM reservations
@@ -97,7 +96,8 @@ export async function getDashboardSummary() {
             FROM rooms
             WHERE is_active = 1
               AND operational_status = 'CLEANING'
-        `),    ]);
+        `),
+    ]);
 
     return {
         date: today,
