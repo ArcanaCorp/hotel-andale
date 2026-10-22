@@ -37,6 +37,7 @@ import {
     listReceivableReservations,
     getPaymentsSummary,
     registerPayment,
+    registerRefund,
 } from "../../database/repositories/payments.repository";
 
 const C = tokens.colors;
@@ -108,6 +109,12 @@ export default function PaymentsScreen() {
 
     const [paymentSheet, setPaymentSheet] =
         useState(false);
+    const [refundSheet, setRefundSheet] = useState(false);
+    const [refundReservationId, setRefundReservationId] = useState(null);
+    const [refundAmount, setRefundAmount] = useState("");
+    const [refundReason, setRefundReason] = useState("");
+    const [refundMethod, setRefundMethod] = useState("CASH");
+    const [refundReference, setRefundReference] = useState("");
     const [reservationSheet, setReservationSheet] =
         useState(false);
 
@@ -226,6 +233,42 @@ export default function PaymentsScreen() {
                 error?.message ||
                     "Ocurrió un error."
             );
+        } finally {
+            setSaving(false);
+        }
+    };
+
+
+    const openRefund = payment => {
+        const targetId = payment.reservation_id || payment.reservationId;
+        if (!targetId) {
+            Alert.alert("Devolución no disponible", "No se encontró una reserva asociada.");
+            return;
+        }
+        setRefundReservationId(targetId);
+        setRefundAmount("");
+        setRefundMethod(payment.method === "OTHER" ? "CASH" : payment.method);
+        setRefundReference("");
+        setRefundReason("");
+        setRefundSheet(true);
+    };
+
+    const handleRefund = async () => {
+        if (saving) return;
+        setSaving(true);
+        try {
+            await registerRefund({
+                reservationId: refundReservationId,
+                amountCents: parseMoney(refundAmount),
+                paymentMethod: refundMethod,
+                reference: refundReference,
+                notes: refundReason,
+            });
+            setRefundSheet(false);
+            await load();
+            Alert.alert("Devolución registrada", "Se descontó del saldo neto y se incorporó como egreso de caja.");
+        } catch (error) {
+            Alert.alert("No se pudo registrar la devolución", error?.message || "Ocurrió un error.");
         } finally {
             setSaving(false);
         }
