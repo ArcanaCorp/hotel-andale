@@ -147,7 +147,12 @@ export default function CheckOutScreen() {
                 `El huésped todavía tiene un saldo de ${formatMoney(balance)}. Registra el pago antes de finalizar la estadía.`,
                 [
                     {
-                        text: "Entendido",
+                        text: "Cancelar",
+                        style: "cancel",
+                    },
+                    {
+                        text: "Ir a cobros",
+                        onPress: () => router.push("/management/payments"),
                     },
                 ]
             );
