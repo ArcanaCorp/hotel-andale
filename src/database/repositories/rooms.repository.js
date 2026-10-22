@@ -3,8 +3,9 @@ import { getDatabase } from "../index";
 export async function createRoom(data) {
     const db = await getDatabase();
 
+    let transactionResult = null;
     try {
-        return await db.withExclusiveTransactionAsync(
+        await db.withExclusiveTransactionAsync(
             async tx => {
                 const roomType = await tx.getFirstAsync(
                     `SELECT id FROM room_types
@@ -59,9 +60,10 @@ export async function createRoom(data) {
                     );
                 }
 
-                return roomId;
+                transactionResult = roomId;
             }
         );
+        return transactionResult;
     } catch (error) {
         const message = String(error?.message ?? "");
 
@@ -115,7 +117,8 @@ export async function getRoomById(id) {
 export async function updateRoom(id, data) {
     const db = await getDatabase();
 
-    return db.withExclusiveTransactionAsync(async tx => {
+    let transactionResult = null;
+    await db.withExclusiveTransactionAsync(async tx => {
         const room = await tx.getFirstAsync(
             "SELECT * FROM rooms WHERE id = ?",
             [id]
@@ -189,8 +192,9 @@ export async function updateRoom(id, data) {
             ]
         );
 
-        return true;
+        transactionResult = true;
     });
+    return transactionResult;
 }
 
 // Comprobar si una habitación puede eliminarse
@@ -260,7 +264,8 @@ export async function canDeleteRoom(id) {
 export async function deleteRoom(id) {
     const db = await getDatabase();
 
-    return db.withExclusiveTransactionAsync(async tx => {
+    let transactionResult = null;
+    await db.withExclusiveTransactionAsync(async tx => {
         const room = await tx.getFirstAsync(
             `
             SELECT id, operational_status
@@ -336,6 +341,7 @@ export async function deleteRoom(id) {
             );
         }
 
-        return true;
+        transactionResult = true;
     });
+    return transactionResult;
 }

@@ -356,7 +356,8 @@ export async function assignBookingIdentity(id) {
 export async function updateBooking(id, data) {
     const db = await getDatabase();
 
-    return db.withExclusiveTransactionAsync(async tx => {
+    let transactionResult = null;
+    await db.withExclusiveTransactionAsync(async tx => {
         // 1. Verificar reserva existente.
         const booking = await tx.getFirstAsync(
             "SELECT * FROM reservations WHERE id = ?",
@@ -492,14 +493,16 @@ export async function updateBooking(id, data) {
             );
         }
 
-        return true;
+        transactionResult = true;
     });
+    return transactionResult;
 }
 
 export async function cancelBooking(id) {
     const db = await getDatabase();
 
-    return db.withExclusiveTransactionAsync(async tx => {
+    let transactionResult = null;
+    await db.withExclusiveTransactionAsync(async tx => {
         const booking = await tx.getFirstAsync(
             "SELECT * FROM reservations WHERE id = ?",
             [id]
@@ -547,6 +550,7 @@ export async function cancelBooking(id) {
             );
         }
 
-        return true;
+        transactionResult = true;
     });
+    return transactionResult;
 }

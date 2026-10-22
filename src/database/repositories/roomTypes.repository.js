@@ -45,7 +45,8 @@ export async function getActiveRoomTypes() {
 export async function createRoomType(data) {
     const db = await getDatabase();
 
-    return db.withExclusiveTransactionAsync(async tx => {
+    let transactionResult = null;
+    await db.withExclusiveTransactionAsync(async tx => {
         const result = await tx.runAsync(
             `INSERT INTO room_types (
                 name,
@@ -107,8 +108,9 @@ export async function createRoomType(data) {
             );
         }
 
-        return id;
+        transactionResult = id;
     });
+    return transactionResult;
 }
 
 export async function createRoomTypeCategory(data) {
