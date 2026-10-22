@@ -406,7 +406,7 @@ export default function PaymentsScreen() {
                 ) : (
                     payments.map(item => (
                         <View
-                            key={item.account_key}
+                            key={item.id}
                             style={styles.paymentRow}
                         >
                             <View style={styles.paymentIcon}>
@@ -701,7 +701,7 @@ export default function PaymentsScreen() {
                                     />
                                 </View>
 
-                                {reservationId === item.id && (
+                                {reservationId === item.account_key && (
                                     <Check
                                         size={20}
                                         color={C.primary}
