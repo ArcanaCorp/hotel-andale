@@ -699,7 +699,7 @@ export default function NewBooking() {
 
                 <View style={styles.field}>
                     <TextField label="Canal de reserva" size="sm" weight="semibold" />
-                    <View style={styles.modeRow}>
+                    <View style={[styles.modeRow, { flexWrap: "wrap" }]}>
                         {[
                             ["DIRECT", "Directa"], ["WHATSAPP", "WhatsApp"],
                             ["PHONE", "Teléfono"], ["WALK_IN", "Presencial"],
@@ -786,7 +786,7 @@ export default function NewBooking() {
                     placeholder="0.00" keyboardType="decimal-pad" />
                 {depositCents > 0 && (
                     <>
-                        <View style={styles.modeRow}>
+                        <View style={[styles.modeRow, { flexWrap: "wrap" }]}>
                             {[
                                 ["CASH", "Efectivo"], ["YAPE", "Yape"],
                                 ["PLIN", "Plin"], ["TRANSFER", "Transferencia"],
