@@ -1,16 +1,14 @@
 
-import { useCallback, useState } from "react";
+import { useCallback } from "react";
 import {
     ActivityIndicator,
     Alert,
     StyleSheet,
-    TextInput,
     View,
 } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import {
     ArrowLeft,
-    KeyRound,
     ShieldAlert,
     ShieldCheck,
 } from "lucide-react-native";
@@ -20,64 +18,19 @@ import TextField from "../../components/ui/TextField";
 import Button from "../../components/ui/Button";
 import { tokens } from "../../styles/tokens";
 
-import {
-    activateLicense,
-    getLicenseInfo,
-} from "../../services/license.service";
+import { useLicense } from "../../context/LicenseContext";
+import { displayInstallationId } from "../../license/protocol";
 
 const C = tokens.colors;
 
 export default function LicenseScreen() {
     const router = useRouter();
 
-    const [license, setLicense] = useState(null);
-    const [code, setCode] = useState("");
-    const [loading, setLoading] = useState(true);
-    const [activating, setActivating] = useState(false);
-
-    const load = useCallback(async () => {
-        try {
-            const result = await getLicenseInfo();
-            setLicense(result);
-        } catch (error) {
-            Alert.alert(
-                "Error",
-                error.message
-            );
-        } finally {
-            setLoading(false);
-        }
-    }, []);
-
-    useFocusEffect(
-        useCallback(() => {
-            load();
-        }, [load])
-    );
-
-    const handleActivate = async () => {
-        setActivating(true);
-
-        try {
-            await activateLicense(code);
-            setCode("");
-            await load();
-
-            Alert.alert(
-                "Licencia activada",
-                "Tu licencia se activó correctamente."
-            );
-        } catch (error) {
-            Alert.alert(
-                "No se pudo activar",
-                error.message
-            );
-        } finally {
-            setActivating(false);
-        }
-    };
-
-    const active = license?.status === "ACTIVE";
+    const { id, active, reason, loading, refresh } = useLicense();
+    useFocusEffect(useCallback(() => {
+        refresh().catch(error => Alert.alert("Error", error.message));
+    }, [refresh]));
+    const installationId = id ? displayInstallationId(id) : "No disponible";
 
     return (
         <ScreenTab>
@@ -153,7 +106,7 @@ export default function LicenseScreen() {
                             />
 
                             <TextField
-                                label={license?.plan || "No disponible"}
+                                label="Licencia vinculada al dispositivo"
                                 size="sm"
                                 weight="medium"
                             />
@@ -168,11 +121,7 @@ export default function LicenseScreen() {
 
                             <TextField
                                 label={
-                                    license?.expiresAt
-                                        ? new Date(
-                                            license.expiresAt
-                                        ).toLocaleDateString("es-PE")
-                                        : "No disponible"
+                                    "No aplica: el token actual no incluye vencimiento"
                                 }
                                 size="sm"
                                 weight="medium"
@@ -181,45 +130,10 @@ export default function LicenseScreen() {
                     </View>
 
                     <View style={styles.section}>
-                        <TextField
-                            label="Activar licencia"
-                            size="lg"
-                            weight="bold"
-                        />
-
-                        <TextField
-                            label="Ingresa el código proporcionado por ARCANA."
-                            size="sm"
-                            color="gray"
-                        />
-
-                        <View style={styles.inputContainer}>
-                            <KeyRound
-                                size={20}
-                                color={C.gray}
-                            />
-
-                            <TextInput
-                                style={styles.input}
-                                value={code}
-                                onChangeText={setCode}
-                                placeholder="Código de activación"
-                                placeholderTextColor={C.gray}
-                                autoCapitalize="characters"
-                                autoCorrect={false}
-                            />
-                        </View>
-
-                        <Button
-                            text="Activar licencia"
-                            icon={ShieldCheck}
-                            loading={activating}
-                            disabled={
-                                activating ||
-                                !code.trim()
-                            }
-                            onPress={handleActivate}
-                        />
+                        <TextField label="ID de instalación" size="sm" color="gray" />
+                        <TextField label={installationId} size="md" weight="semibold" selectable />
+                        <TextField label="La activación se realiza únicamente al iniciar Hotel Ándale." size="xs" color="gray" />
+                        {!!reason && <TextField label={reason} size="xs" color="gray" />}
                     </View>
 
                     <View style={styles.note}>
