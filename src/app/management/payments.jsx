@@ -158,7 +158,7 @@ export default function PaymentsScreen() {
         );
 
     const remainingCents = selectedReservation
-        ? selectedReservation.agreed_price_cents -
+        ? selectedReservation.total_cents -
           selectedReservation.paid_cents
         : 0;
 
@@ -181,7 +181,7 @@ export default function PaymentsScreen() {
         setAmount(
             (
                 (
-                    item.agreed_price_cents -
+                    item.total_cents -
                     item.paid_cents
                 ) / 100
             ).toFixed(2)
