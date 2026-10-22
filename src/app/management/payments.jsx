@@ -161,7 +161,7 @@ export default function PaymentsScreen() {
 
     const selectedReservation =
         reservations.find(
-            item => item.id === reservationId
+            item => item.account_key === reservationId
         );
 
     const remainingCents = selectedReservation
@@ -183,7 +183,7 @@ export default function PaymentsScreen() {
     };
 
     const selectReservation = item => {
-        setReservationId(item.id);
+        setReservationId(item.account_key);
 
         setAmount(
             (
@@ -212,7 +212,9 @@ export default function PaymentsScreen() {
 
         try {
             await registerPayment({
-                reservationId,
+                ...(selectedReservation?.account_type === 'STAY'
+                    ? { stayId: selectedReservation.stay_id }
+                    : { reservationId: selectedReservation?.reservation_id }),
                 amountCents: parseMoney(amount),
                 paymentMethod,
                 reference,
@@ -240,12 +242,13 @@ export default function PaymentsScreen() {
 
 
     const openRefund = payment => {
-        const targetId = payment.reservation_id || payment.reservationId;
-        if (!targetId) {
+        const targetId = payment.reservation_id || null;
+        const targetStayId = payment.stay_id || null;
+        if (!targetId && !targetStayId) {
             Alert.alert("Devolución no disponible", "No se encontró una reserva asociada.");
             return;
         }
-        setRefundReservationId(targetId);
+        setRefundReservationId(targetId ? `R-${targetId}` : `S-${targetStayId}`);
         setRefundAmount("");
         setRefundMethod(payment.method === "OTHER" ? "CASH" : payment.method);
         setRefundReference("");
@@ -258,7 +261,9 @@ export default function PaymentsScreen() {
         setSaving(true);
         try {
             await registerRefund({
-                reservationId: refundReservationId,
+                ...(String(refundReservationId).startsWith('S-')
+                    ? { stayId: Number(String(refundReservationId).slice(2)) }
+                    : { reservationId: Number(String(refundReservationId).slice(2)) }),
                 amountCents: parseMoney(refundAmount),
                 paymentMethod: refundMethod,
                 reference: refundReference,
@@ -401,7 +406,7 @@ export default function PaymentsScreen() {
                 ) : (
                     payments.map(item => (
                         <View
-                            key={item.id}
+                            key={item.account_key}
                             style={styles.paymentRow}
                         >
                             <View style={styles.paymentIcon}>
@@ -426,7 +431,7 @@ export default function PaymentsScreen() {
                                 <TextField
                                     label={
                                         item.booking_code ||
-                                        `Reserva #${item.reservation_id}`
+                                        `Estadía #${item.stay_id || item.reservation_id}`
                                     }
                                     size="sm"
                                     weight="semibold"
