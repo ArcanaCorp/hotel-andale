@@ -176,6 +176,7 @@ export default function BookingDetails() {
             <Info label="Habitación" value={`${b.room_number} · ${b.room_type}`}/>
             <View style={styles.columns}><Info label="Ingreso previsto" value={dateLabel(b.start_at)}/><Info label="Salida prevista" value={dateLabel(b.end_at)}/></View>
             <Info label="Modalidad" value={b.billing_mode === "HOURLY" ? "Por horas" : "Por noches"}/>
+            <Info label="Canal de reserva" value={({DIRECT:"Directa",WHATSAPP:"WhatsApp",PHONE:"Teléfono",WALK_IN:"Presencial",WEB:"Web",OTHER:"Otro"})[b.booking_origin] || "Directa"}/>
             <Info label="Duración programada" value={`${durationHours} hora${durationHours === 1 ? "" : "s"}`}/>
             {stay && <><Info label="Estado de estadía" value={stay.status === "ACTIVE" ? "En curso" : stay.status === "COMPLETED" ? "Finalizada" : "Cancelada"}/><Info label="Check-in registrado" value={dateLabel(stay.check_in_at)}/>{stay.actual_check_out_at && <Info label="Check-out registrado" value={dateLabel(stay.actual_check_out_at)}/>}</>}
             {b.notes ? <Info label="Observaciones" value={b.notes}/> : null}
