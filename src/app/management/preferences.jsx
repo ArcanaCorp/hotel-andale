@@ -161,6 +161,7 @@ export default function PreferencesScreen() {
                 preferences.hourly_enabled === 1,
             nightly_enabled:
                 preferences.nightly_enabled === 1,
+            night_duration_hours: String(preferences.night_duration_hours ?? 8),
             late_checkout_fee:
                 (
                     preferences.late_checkout_fee_cents /
@@ -211,6 +212,7 @@ export default function PreferencesScreen() {
                         form.nightly_enabled,
                     checkout_time:
                         form.checkout_time,
+                    night_duration_hours: Number(form.night_duration_hours),
                     late_checkout_fee_cents: fee,
                     currency: form.currency,
                     timezone: form.timezone,
@@ -311,6 +313,14 @@ export default function PreferencesScreen() {
                             label="Horarios y recargos"
                             size="lg"
                             weight="bold"
+                        />
+
+                        <SettingRow
+                            icon={Moon}
+                            title="Duración de una noche"
+                            description="Horas que componen cada noche facturable"
+                            value={`${preferences.night_duration_hours} horas`}
+                            onPress={() => openEditor("checkout")}
                         />
 
                         <SettingRow
@@ -445,6 +455,16 @@ export default function PreferencesScreen() {
 
                         {activeSheet === "checkout" && (
                             <>
+                                <View style={styles.formField}>
+                                    <TextField label="Horas por noche (1 a 24)" size="sm" weight="medium" />
+                                    <TextInput
+                                        value={form.night_duration_hours}
+                                        onChangeText={value => updateForm("night_duration_hours", value)}
+                                        keyboardType="number-pad"
+                                        placeholder="8"
+                                        style={styles.input}
+                                    />
+                                </View>
                                 <View style={styles.formField}>
                                     <TextField
                                         label="Hora de check-out"

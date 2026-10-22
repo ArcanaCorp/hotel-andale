@@ -14,6 +14,7 @@ export async function getHotelPreferences() {
             hourly_enabled,
             nightly_enabled,
             checkout_time,
+            night_duration_hours,
             late_checkout_fee_cents,
             currency,
             timezone
@@ -56,6 +57,11 @@ export async function updateHotelPreferences(data) {
         );
     }
 
+    const nightDurationHours = Number(data.night_duration_hours);
+    if (!Number.isSafeInteger(nightDurationHours) || nightDurationHours < 1 || nightDurationHours > 24) {
+        throw new Error("La duración de una noche debe estar entre 1 y 24 horas.");
+    }
+
     const fee = data.late_checkout_fee_cents;
 
     if (
@@ -96,6 +102,7 @@ export async function updateHotelPreferences(data) {
                     hourly_enabled = ?,
                     nightly_enabled = ?,
                     checkout_time = ?,
+                    night_duration_hours = ?,
                     late_checkout_fee_cents = ?,
                     currency = ?,
                     timezone = ?,
@@ -106,6 +113,7 @@ export async function updateHotelPreferences(data) {
                     hourlyEnabled,
                     nightlyEnabled,
                     checkoutTime,
+                    nightDurationHours,
                     fee,
                     data.currency,
                     data.timezone,
