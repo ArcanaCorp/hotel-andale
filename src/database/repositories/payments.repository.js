@@ -58,8 +58,8 @@ export async function listPayments() {
         FROM payments p
         LEFT JOIN stays s ON s.id = p.stay_id
         LEFT JOIN reservations r ON r.id = COALESCE(p.reservation_id, s.reservation_id)
-        JOIN guests g ON g.id = r.guest_id
-        LEFT JOIN rooms rm ON rm.id = r.room_id
+        LEFT JOIN guests g ON g.id = COALESCE(r.guest_id, s.primary_guest_id)
+        LEFT JOIN rooms rm ON rm.id = COALESCE(r.room_id, s.room_id)
         ORDER BY p.created_at DESC, p.id DESC
     `);
 }
