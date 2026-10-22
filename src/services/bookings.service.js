@@ -175,6 +175,23 @@ export async function registerBooking(data) {
         throw new Error("El DNI debe tener 8 dígitos.");
     }
 
+    const origin = String(data.bookingOrigin || "DIRECT").trim();
+    if (!["DIRECT", "WHATSAPP", "PHONE", "WALK_IN", "WEB", "OTHER"].includes(origin)) {
+        throw new Error("El canal de reserva no es válido.");
+    }
+    const depositCents = Number(data.depositCents || 0);
+    if (!Number.isSafeInteger(depositCents) || depositCents < 0 || depositCents > priceCents) {
+        throw new Error("El adelanto no puede superar el precio total.");
+    }
+    if (depositCents > 0) {
+        if (!["CASH", "YAPE", "PLIN", "TRANSFER", "CARD"].includes(data.depositMethod)) {
+            throw new Error("Selecciona un método de pago para el adelanto.");
+        }
+        if (data.depositMethod !== "CASH" && !String(data.depositReference || "").trim()) {
+            throw new Error("Ingresa la referencia del adelanto.");
+        }
+    }
+
     const bookingId = await createBooking({
         roomId: data.roomId,
         firstName,
@@ -188,6 +205,10 @@ export async function registerBooking(data) {
         endAt: data.endAt,
         priceCents,
         notes: String(data.notes ?? "").trim(),
+        bookingOrigin: origin,
+        depositCents,
+        depositMethod: data.depositMethod || null,
+        depositReference: String(data.depositReference || "").trim(),
     });
 
     console.log("[REGISTER BOOKING] ID recibido:", bookingId);
