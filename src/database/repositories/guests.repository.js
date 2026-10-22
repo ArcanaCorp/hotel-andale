@@ -97,7 +97,8 @@ export async function getGuestDetail(id) {
 export async function updateGuest(id, data) {
     const db = await getDatabase();
 
-    return db.withExclusiveTransactionAsync(async tx => {
+    let transactionResult = null;
+    await db.withExclusiveTransactionAsync(async tx => {
         const guest = await tx.getFirstAsync(
             "SELECT id FROM guests WHERE id = ?",
             [id]
@@ -184,6 +185,7 @@ export async function updateGuest(id, data) {
             ]
         );
 
-        return true;
+        transactionResult = true;
     });
+    return transactionResult;
 }
