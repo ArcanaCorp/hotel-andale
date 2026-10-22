@@ -1,6 +1,7 @@
 import * as FileSystem from "expo-file-system/legacy";
 import * as DocumentPicker from "expo-document-picker";
 import JSZip from "jszip";
+import { validateBackupEntries, validateBackupManifest, validateSQLiteSignature } from "./restore-validation.mjs";
 
 const ROOT = FileSystem.documentDirectory;
 
@@ -24,79 +25,6 @@ async function removeDirectory(path) {
     await FileSystem.deleteAsync(path, {
         idempotent: true,
     });
-}
-
-function validateZipPaths(zip) {
-    let totalSize = 0;
-    let count = 0;
-
-    for (const [name, entry] of Object.entries(zip.files)) {
-        if (entry.dir) continue;
-
-        count += 1;
-
-        if (count > 5000) {
-            throw new Error(
-                "La copia contiene demasiados archivos."
-            );
-        }
-
-        if (
-            name.startsWith("/") ||
-            name.includes("\\") ||
-            name.split("/").includes("..")
-        ) {
-            throw new Error(
-                "La copia contiene rutas no permitidas."
-            );
-        }
-
-        const allowed =
-            name === MANIFEST_FILE ||
-            name === DATABASE_FILE ||
-            name.startsWith("files/hotel/");
-
-        if (!allowed) {
-            throw new Error(
-                `Archivo no reconocido: ${name}`
-            );
-        }
-
-        const size =
-            entry._data?.uncompressedSize;
-
-        if (!Number.isSafeInteger(size) || size < 0) {
-            throw new Error(
-                "No se pudo validar el tamaño de la copia."
-            );
-        }
-
-        if (
-            name === DATABASE_FILE &&
-            size > MAX_DATABASE_BYTES
-        ) {
-            throw new Error(
-                "La base de datos supera el límite permitido."
-            );
-        }
-
-        if (
-            name !== DATABASE_FILE &&
-            size > MAX_FILE_BYTES
-        ) {
-            throw new Error(
-                "Un archivo supera el límite permitido."
-            );
-        }
-
-        totalSize += size;
-
-        if (totalSize > MAX_TOTAL_BYTES) {
-            throw new Error(
-                "La copia descomprimida es demasiado grande."
-            );
-        }
-    }
 }
 
 export async function selectRestoreFile() {
@@ -140,7 +68,9 @@ export async function inspectRestoreFile(uri) {
         createFolders: false,
     });
 
-    validateZipPaths(zip);
+    validateBackupEntries(Object.entries(zip.files).map(([name, entry]) => ({
+        name, dir: entry.dir, size: entry._data?.uncompressedSize,
+    })));
 
     const manifestEntry = zip.file(MANIFEST_FILE);
     const databaseEntry = zip.file(DATABASE_FILE);
@@ -155,28 +85,12 @@ export async function inspectRestoreFile(uri) {
         await manifestEntry.async("string")
     );
 
-    if (
-        manifest.format !== "HOTEL_ANDALE_BACKUP" ||
-        manifest.formatVersion !== 1 ||
-        manifest.databaseName !== "hotel_andale.db"
-    ) {
-        throw new Error(
-            "Este archivo no es una copia compatible de Hotel Ándale."
-        );
-    }
+    validateBackupManifest(manifest);
 
     const dbBytes =
         await databaseEntry.async("uint8array");
 
-    const signature = new TextDecoder().decode(
-        dbBytes.slice(0, 16)
-    );
-
-    if (signature !== "SQLite format 3\u0000") {
-        throw new Error(
-            "La copia no contiene una base de datos SQLite válida."
-        );
-    }
+    validateSQLiteSignature(dbBytes);
 
     return {
         uri,
