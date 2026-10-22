@@ -68,7 +68,8 @@ export async function openCashSession({
 export async function registerCashMovement(data) {
     const db = await getDatabase();
 
-    return db.withExclusiveTransactionAsync(async tx => {
+    let createdId = null;
+    await db.withExclusiveTransactionAsync(async tx => {
         const session = await tx.getFirstAsync(`
             SELECT id
             FROM cash_sessions
@@ -206,7 +207,8 @@ export async function closeCashSession({
 }) {
     const db = await getDatabase();
 
-    return db.withExclusiveTransactionAsync(async tx => {
+    let closingResult = null;
+    await db.withExclusiveTransactionAsync(async tx => {
         const session = await tx.getFirstAsync(`
             SELECT *
             FROM cash_sessions
