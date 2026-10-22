@@ -269,3 +269,80 @@ export async function registerPayment(data) {
 
     return createdPaymentId;
 }
+
+/**
+ * Registra una devolución real y su egreso de caja en una sola transacción.
+ * No permite devolver más dinero del recibido neto ni operar sin caja abierta.
+ */
+export async function registerRefund(data) {
+    const db = await getDatabase();
+    const reservationId = Number(data.reservationId);
+    const amountCents = Number(data.amountCents);
+    const method = data.paymentMethod;
+    if (!Number.isSafeInteger(reservationId) || reservationId <= 0) {
+        throw new Error("Selecciona una reserva válida.");
+    }
+    if (!Number.isSafeInteger(amountCents) || amountCents <= 0) {
+        throw new Error("La devolución debe ser mayor a cero.");
+    }
+    if (!METHODS.includes(method)) {
+        throw new Error("Método de devolución inválido.");
+    }
+    if (method !== "CASH" && !String(data.reference || "").trim()) {
+        throw new Error("Ingresa la referencia de la devolución.");
+    }
+
+    let createdRefundId = null;
+    await db.withExclusiveTransactionAsync(async tx => {
+        const reservation = await tx.getFirstAsync(
+            "SELECT id, booking_code FROM reservations WHERE id = ?",
+            [reservationId]
+        );
+        if (!reservation) throw new Error("La reserva no existe.");
+
+        const paid = await tx.getFirstAsync(`
+            SELECT COALESCE(SUM(CASE WHEN p.type = 'REFUND'
+                THEN -p.amount_cents ELSE p.amount_cents END), 0) AS total
+            FROM payments p
+            LEFT JOIN stays s ON s.id = p.stay_id
+            WHERE p.reservation_id = ? OR s.reservation_id = ?
+        `, [reservationId, reservationId]);
+        if (amountCents > Number(paid?.total || 0)) {
+            throw new Error("La devolución supera el importe neto cobrado.");
+        }
+
+        const session = await tx.getFirstAsync(
+            "SELECT id FROM cash_sessions WHERE status = 'OPEN' LIMIT 1"
+        );
+        if (!session) {
+            throw new Error("Debes abrir una caja antes de registrar devoluciones.");
+        }
+
+        const timestamp = new Date().toISOString();
+        const movement = await tx.runAsync(`
+            INSERT INTO cash_movements
+            (session_id, type, category, description, amount_cents, payment_method, created_at)
+            VALUES (?, 'EXPENSE', ?, ?, ?, ?, ?)
+        `, [
+            session.id,
+            "Devolución de hospedaje",
+            `Reserva ${reservation.booking_code}`,
+            amountCents,
+            method,
+            timestamp,
+        ]);
+        const result = await tx.runAsync(`
+            INSERT INTO payments
+            (reservation_id, amount_cents, method, type, reference, notes, cash_movement_id, created_at)
+            VALUES (?, ?, ?, 'REFUND', ?, ?, ?, ?)
+        `, [
+            reservationId, amountCents, method,
+            String(data.reference || "").trim() || null,
+            String(data.notes || "").trim() || null,
+            movement.lastInsertRowId,
+            timestamp,
+        ]);
+        createdRefundId = result.lastInsertRowId;
+    });
+    return createdRefundId;
+}
