@@ -94,7 +94,7 @@ export default function CheckInScreen() {
                                     {
                                         text: "Entendido",
                                         onPress: () =>
-                                            router.replace("/(tabs)/bookings"),
+                                            router.replace({ pathname: "/booking/details", params: { id: String(reservationId) } }),
                                     },
                                 ]
                             );
