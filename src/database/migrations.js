@@ -182,7 +182,7 @@ export async function runMigrations(db) {
     const row = await db.getFirstAsync("PRAGMA user_version");
     let version = row?.user_version ?? 0;
 
-    if (version > 12) {
+    if (version > 13) {
         throw new Error(
             "Versión de base de datos no compatible."
         );
@@ -250,6 +250,11 @@ export async function runMigrations(db) {
     if (version === 11) {
         await migration012(db);
         version = 12;
+    }
+
+    if (version === 12) {
+        await migration013(db);
+        version = 13;
     }
 
     return version;
@@ -651,5 +656,12 @@ async function migration012(db) {
         `);
 
         await tx.execAsync("PRAGMA user_version = 12");
+    });
+}
+
+async function migration013(db) {
+    await db.withExclusiveTransactionAsync(async tx => {
+        await tx.execAsync("ALTER TABLE hotel_settings ADD COLUMN night_duration_hours INTEGER NOT NULL DEFAULT 8 CHECK (night_duration_hours BETWEEN 1 AND 24)");
+        await tx.execAsync("PRAGMA user_version = 13");
     });
 }
