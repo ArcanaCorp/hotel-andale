@@ -137,9 +137,10 @@ export async function registerPayment(data) {
         }
 
         if (!METHODS.includes(data.paymentMethod)) {
-            throw new Error(
-                "Método de pago inválido."
-            );
+            throw new Error("Método de pago inválido.");
+        }
+        if (data.paymentMethod !== "CASH" && !String(data.reference || "").trim()) {
+            throw new Error("Ingresa la referencia del pago.");
         }
 
         const reservation = await tx.getFirstAsync(
@@ -279,6 +280,9 @@ export async function registerRefund(data) {
     const reservationId = Number(data.reservationId);
     const amountCents = Number(data.amountCents);
     const method = data.paymentMethod;
+    if (!String(data.notes || "").trim()) {
+        throw new Error("Indica el motivo de la devolución.");
+    }
     if (!Number.isSafeInteger(reservationId) || reservationId <= 0) {
         throw new Error("Selecciona una reserva válida.");
     }
