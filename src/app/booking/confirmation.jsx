@@ -15,7 +15,7 @@ import ScreenTab from "../../components/ui/ScreenTab";
 import TextField from "../../components/ui/TextField";
 import Button from "../../components/ui/Button";
 
-import { getBookingConfirmation, cancelBooking } from "../../database/repositories/bookings.repository";
+import { getBookingConfirmation, assignBookingIdentity, cancelBooking } from "../../database/repositories/bookings.repository";
 import { tokens } from "../../styles/tokens";
 
 const C = {
@@ -308,7 +308,12 @@ function ReservationCard({ booking }) {
 
 export default function BookingConfirmation() {
     const router = useRouter();
-    const { id } = useLocalSearchParams();
+    const params = useLocalSearchParams();
+
+    const id = Array.isArray(params.id) ? params.id[0] : params.id;
+
+    console.log("[CONFIRMATION] Parámetros:", params);
+    console.log("[CONFIRMATION] ID recibido:", id);
 
     const cardRef = useRef(null);
 
@@ -316,16 +321,15 @@ export default function BookingConfirmation() {
     const [loading, setLoading] = useState(true);
     const [sharing, setSharing] = useState(false);
     const [cancelling, setCancelling] = useState(false);
+    const [loadError, setLoadError] = useState("");
 
-    const canManage = ["PENDING", "CONFIRMED"].includes(
-        booking?.status
-    );
+    const canManage = ["PENDING", "CONFIRMED"].includes(booking?.status);
 
     const handleEdit = () => {
         if (!canManage) return;
 
         router.push({
-            pathname: "/reservas/editar",
+            pathname: "/booking/edit",
             params: {
                 id: String(booking.id),
             },
@@ -386,41 +390,54 @@ export default function BookingConfirmation() {
 
             async function load() {
                 setLoading(true);
+                setLoadError("");
+                setBooking(null);
 
                 try {
                     const bookingId = Number(id);
 
-                    if (!Number.isSafeInteger(bookingId) ||
-                        bookingId <= 0) {
-                        throw new Error("Reserva inválida.");
+                    if (
+                        !Number.isSafeInteger(bookingId) ||
+                        bookingId <= 0
+                    ) {
+                        throw new Error(
+                            `Identificador de reserva inválido: ${String(id)}`
+                        );
                     }
 
-                    const result =
-                        await getBookingConfirmation(bookingId);
+                    let result = await getBookingConfirmation(bookingId);
 
                     if (!result) {
                         throw new Error(
-                            "No se encontró la reserva."
+                            `No se encontró la reserva #${bookingId} en SQLite.`
                         );
                     }
 
-                    if (!result.qr_token) {
+                    // Recuperar la identidad QR de reservas antiguas.
+                    if (!result.qr_token || !result.booking_code) {
+                        result = await assignBookingIdentity(bookingId);
+                    }
+
+                    if (!result?.qr_token) {
                         throw new Error(
-                            "La reserva no tiene un token QR. Revisa la migración 008 y createBooking()."
+                            "No se pudo generar el QR de la reserva."
                         );
                     }
 
-                    if (active) setBooking(result);
+                    if (active) {
+                        setBooking(result);
+                    }
                 } catch (error) {
                     if (active) {
-                        Alert.alert(
-                            "Error",
+                        setLoadError(
                             error?.message ||
                             "No se pudo cargar la confirmación."
                         );
                     }
                 } finally {
-                    if (active) setLoading(false);
+                    if (active) {
+                        setLoading(false);
+                    }
                 }
             }
 
@@ -586,15 +603,9 @@ export default function BookingConfirmation() {
     if (!booking) {
         return (
             <ScreenTab>
-                <TextField
-                    label="No se pudo mostrar la reserva."
-                    size="md"
-                />
-
-                <Button
-                    text="Volver"
-                    onPress={() => router.back()}
-                />
+                <TextField label="No se pudo mostrar la reserva" size="lg" weight="bold"/>
+                <TextField label={loadError || "No hay datos disponibles."} size="sm" color="gray"/>
+                <Button text="Volver a reservas" onPress={() => router.replace("/(tabs)/bookings")}/>
             </ScreenTab>
         );
     }

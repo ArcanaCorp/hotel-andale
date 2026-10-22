@@ -1,38 +1,17 @@
-
 import { useState } from "react";
-import {
-    ActivityIndicator,
-    Alert,
-    Platform,
-    Pressable,
-    StyleSheet,
-    TextInput,
-    View,
-} from "react-native";
+import { ActivityIndicator, Alert, Platform, Pressable, StyleSheet, TextInput, View } from "react-native";
 
 import { useRouter } from "expo-router";
 import DateTimePicker from "@react-native-community/datetimepicker";
 
-import {
-    ChevronLeft,
-    ChevronDown,
-    Check,
-    Search,
-    CalendarDays,
-    Info,
-} from "lucide-react-native";
+import { ChevronLeft, ChevronDown, Check, Search, Info } from "lucide-react-native";
 
 import ScreenTab from "../../components/ui/ScreenTab";
 import BottomSheet from "../../components/ui/BottomSheet";
 import TextField from "../../components/ui/TextField";
 import Button from "../../components/ui/Button";
 
-import { consultDni } from "../../services/dni.service";
-
-import {
-    listAvailableBookingRooms,
-    registerBooking,
-} from "../../services/bookings.service";
+import { listAvailableBookingRooms, registerBooking } from "../../services/bookings.service";
 
 import { tokens } from "../../styles/tokens";
 import { lookupGuest } from "../../services/guestLookup.service";
@@ -503,7 +482,16 @@ export default function NewBooking() {
                 notes,
             });
 
-            router.replace({ pathname: "/booking/confirmation", params: { id: String(bookingId) }});
+            const reservationId = Number(bookingId);
+
+            console.log("[NEW BOOKING] ID generado:", bookingId);
+
+            if (!Number.isSafeInteger(reservationId) || reservationId <= 0) {
+                throw new Error(`La reserva no devolvió un identificador válido: ${String(bookingId)}`);
+            }
+
+            router.replace(`/booking/confirmation?id=${reservationId}`);
+
         } catch (error) {
             Alert.alert(
                 "No se pudo guardar",

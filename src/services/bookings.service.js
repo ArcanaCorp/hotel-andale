@@ -147,19 +147,22 @@ export async function registerBooking(data) {
         throw new Error("El DNI debe tener 8 dígitos.");
     }
 
-    return createBooking({
+    const bookingId = await createBooking({
         roomId: data.roomId,
         firstName,
         lastName,
         phone: String(data.phone ?? "").trim(),
         documentType,
         documentNumber: documentNumber || null,
-        nationality:
-            String(data.nationality ?? "").trim() || null,
+        nationality: String(data.nationality ?? "").trim() || null,
         billingMode: data.billingMode,
         startAt: data.startAt,
         endAt: data.endAt,
         priceCents,
         notes: String(data.notes ?? "").trim(),
     });
+
+    console.log("[REGISTER BOOKING] ID recibido:", bookingId);
+
+    return bookingId;
 }

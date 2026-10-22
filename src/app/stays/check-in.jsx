@@ -92,6 +92,7 @@ export default function CheckInScreen() {
         });
     };
 
+    
     const handleScan = async ({ data }) => {
         if (scanLocked) return;
 
@@ -101,18 +102,71 @@ export default function CheckInScreen() {
             const reservation =
                 await resolveReservationQR(data);
 
-            if (!reservation?.id) {
-                throw new Error(
-                    "No se encontró una reserva válida."
-                );
+            setCameraOpen(false);
+
+            if (reservation.nextAction === "CHECK_IN") {
+                router.push({
+                    pathname: "/stays/check-in-details",
+                    params: {
+                        reservationId: String(reservation.id),
+                    },
+                });
+
+                return;
             }
 
-            openReservation(reservation.id);
+            if (reservation.nextAction === "CHECK_OUT") {
+                Alert.alert(
+                    "Estadía activa",
+                    `La reserva ${reservation.code} ya tiene un check-in registrado. ¿Deseas realizar el check-out?`,
+                    [
+                        {
+                            text: "Cancelar",
+                            style: "cancel",
+                            onPress: () => setScanLocked(false),
+                        },
+                        {
+                            text: "Ver check-out",
+                            onPress: () => {
+                                setScanLocked(false);
+
+                                router.push({
+                                    pathname: "/stays/check-out",
+                                    params: {
+                                        stayId: String(reservation.stayId),
+                                    },
+                                });
+                            },
+                        },
+                    ]
+                );
+
+                return;
+            }
+
+            if (reservation.nextAction === "COMPLETED") {
+                Alert.alert(
+                    "Estadía finalizada",
+                    "Esta reserva ya completó su check-out.",
+                    [
+                        {
+                            text: "Entendido",
+                            onPress: () => setScanLocked(false),
+                        },
+                    ]
+                );
+
+                return;
+            }
+
+            throw new Error(
+                "La reserva no está disponible para esta operación."
+            );
         } catch (error) {
             setCameraOpen(false);
 
             Alert.alert(
-                "QR no válido",
+                "No se pudo procesar el QR",
                 error.message,
                 [
                     {

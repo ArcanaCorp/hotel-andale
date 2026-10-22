@@ -1,6 +1,10 @@
 import * as Crypto from "expo-crypto";
 import { getDatabase } from "../index";
 
+// =====================================================
+// CONSULTAR HABITACIONES DISPONIBLES
+// =====================================================
+
 export async function getBookingRooms(startAt, endAt) {
     const db = await getDatabase();
 
@@ -12,6 +16,7 @@ export async function getBookingRooms(startAt, endAt) {
             rt.name AS room_type,
             rt.capacity,
             r.operational_status,
+
             (
                 SELECT rr.price_cents
                 FROM room_rates rr
@@ -20,6 +25,7 @@ export async function getBookingRooms(startAt, endAt) {
                   AND rr.is_active = 1
                 LIMIT 1
             ) AS hourly_price_cents,
+
             (
                 SELECT rr.price_cents
                 FROM room_rates rr
@@ -28,73 +34,96 @@ export async function getBookingRooms(startAt, endAt) {
                   AND rr.is_active = 1
                 LIMIT 1
             ) AS nightly_price_cents
+
         FROM rooms r
-        JOIN room_types rt ON rt.id = r.room_type_id
+
+        JOIN room_types rt
+            ON rt.id = r.room_type_id
+
         WHERE r.is_active = 1
           AND rt.is_active = 1
-          AND r.operational_status NOT IN (
-              'MAINTENANCE', 'CLEANING'
-          )
+
+          -- Solo habitaciones listas para ocuparse.
+          AND r.operational_status = 'AVAILABLE'
+
+          -- Reservas pendientes o confirmadas
+          -- que se cruzan con el horario solicitado.
           AND NOT EXISTS (
               SELECT 1
               FROM reservations b
               WHERE b.room_id = r.id
                 AND b.status IN (
-                    'PENDING', 'CONFIRMED', 'CHECKED_IN'
+                    'PENDING',
+                    'CONFIRMED'
                 )
                 AND b.start_at < ?
                 AND b.end_at > ?
           )
+
+          -- Una estadía activa bloquea la habitación
+          -- independientemente de su salida programada.
           AND NOT EXISTS (
               SELECT 1
               FROM stays s
               WHERE s.room_id = r.id
                 AND s.status = 'ACTIVE'
-                AND s.check_in_at < ?
-                AND s.scheduled_check_out_at > ?
           )
+
         ORDER BY r.number COLLATE NOCASE
-    `, [endAt, startAt, endAt, startAt]);
+    `, [
+        endAt,
+        startAt,
+    ]);
 }
 
 export async function createBooking(data) {
     const db = await getDatabase();
 
-    return db.withExclusiveTransactionAsync(async tx => {
-        // 1. Validar disponibilidad de la habitación.
+    let createdBookingId = null;
+
+    await db.withExclusiveTransactionAsync(async tx => {
+
+        // -------------------------------------------------
+        // 1. Validar disponibilidad de la habitación
+        // -------------------------------------------------
+
         const room = await tx.getFirstAsync(`
             SELECT r.id
             FROM rooms r
+
+            JOIN room_types rt
+                ON rt.id = r.room_type_id
+
             WHERE r.id = ?
               AND r.is_active = 1
-              AND r.operational_status NOT IN (
-                  'MAINTENANCE',
-                  'CLEANING'
-              )
+              AND rt.is_active = 1
+              AND r.operational_status = 'AVAILABLE'
+
+              -- No permitir reservas superpuestas.
               AND NOT EXISTS (
                   SELECT 1
                   FROM reservations b
                   WHERE b.room_id = r.id
                     AND b.status IN (
                         'PENDING',
-                        'CONFIRMED',
-                        'CHECKED_IN'
+                        'CONFIRMED'
                     )
                     AND b.start_at < ?
                     AND b.end_at > ?
               )
+
+              -- No permitir reservar una habitación
+              -- con una estadía todavía activa.
               AND NOT EXISTS (
                   SELECT 1
                   FROM stays s
                   WHERE s.room_id = r.id
                     AND s.status = 'ACTIVE'
-                    AND s.check_in_at < ?
-                    AND s.scheduled_check_out_at > ?
               )
+
+            LIMIT 1
         `, [
             data.roomId,
-            data.endAt,
-            data.startAt,
             data.endAt,
             data.startAt,
         ]);
@@ -105,7 +134,10 @@ export async function createBooking(data) {
             );
         }
 
-        // 2. Buscar huésped existente.
+        // -------------------------------------------------
+        // 2. Buscar huésped existente
+        // -------------------------------------------------
+
         let guestId = null;
 
         if (data.documentType && data.documentNumber) {
@@ -123,7 +155,10 @@ export async function createBooking(data) {
             guestId = existing?.id ?? null;
         }
 
-        // 3. Crear huésped si no existe.
+        // -------------------------------------------------
+        // 3. Crear o actualizar huésped
+        // -------------------------------------------------
+
         if (!guestId) {
             const guest = await tx.runAsync(`
                 INSERT INTO guests (
@@ -147,9 +182,9 @@ export async function createBooking(data) {
             ]);
 
             guestId = guest.lastInsertRowId;
+
         } else {
-            // Actualizar únicamente datos de contacto.
-            // No sobrescribir la identidad ya registrada.
+            // Actualizar solo información de contacto.
             await tx.runAsync(`
                 UPDATE guests
                 SET phone = COALESCE(
@@ -163,47 +198,42 @@ export async function createBooking(data) {
             ]);
         }
 
-        // 4. Crear reserva.
-        const result = await tx.runAsync(`
-            INSERT INTO reservations (
-                room_id,
-                guest_id,
-                billing_mode,
-                start_at,
-                end_at,
-                status,
-                agreed_price_cents,
-                notes,
-                created_at
-            )
-            VALUES (
-                ?, ?, ?, ?, ?,
-                'PENDING', ?, ?, ?
-            )
-        `, [
-            data.roomId,
-            guestId,
-            data.billingMode,
-            data.startAt,
-            data.endAt,
-            data.priceCents,
-            data.notes || null,
-            new Date().toISOString(),
-        ]);
+        // -------------------------------------------------
+        // 4. Crear reserva
+        // -------------------------------------------------
 
-        const bookingId = result.lastInsertRowId;
+        const now = new Date().toISOString();
 
-        // 5. Generar código visible de reserva.
-        const bookingCode =
-            `RSV-${String(bookingId).padStart(6, "0")}`;
+        const sentenceInsertReservation = `INSERT INTO reservations (room_id, guest_id, billing_mode, start_at, end_at, status, agreed_price_cents, notes, created_at) VALUES (?, ?, ?, ?, ?, 'PENDING', ?, ?, ?)`
 
-        // 6. Generar token único para el QR.
+        const result = await tx.runAsync(sentenceInsertReservation, [ data.roomId, guestId, data.billingMode, data.startAt, data.endAt, data.priceCents, data.notes || null, now]);
+
+        const bookingId = Number(result.lastInsertRowId);
+
+        console.log("[CREATE BOOKING] ID SQLite:", bookingId);
+
+        if (!bookingId) throw new Error("No se pudo generar el identificador de la reserva.");
+
+        // -------------------------------------------------
+        // 5. Generar código de reserva
+        // -------------------------------------------------
+
+        const bookingCode = `RSV-${String(bookingId).padStart(6, "0")}`;
+
+        // -------------------------------------------------
+        // 6. Generar token QR único
+        // -------------------------------------------------
+
         const qrToken = Crypto.randomUUID();
 
-        // 7. Guardar identidad de reserva.
-        await tx.runAsync(`
+        // -------------------------------------------------
+        // 7. Guardar código y token
+        // -------------------------------------------------
+
+        const identityResult = await tx.runAsync(`
             UPDATE reservations
-            SET booking_code = ?,
+            SET
+                booking_code = ?,
                 qr_token = ?
             WHERE id = ?
         `, [
@@ -212,9 +242,37 @@ export async function createBooking(data) {
             bookingId,
         ]);
 
-        // 8. Devolver identificador para navegación.
-        return bookingId;
+        if (identityResult.changes !== 1) {
+            throw new Error(
+                "No se pudo asignar la identidad de la reserva."
+            );
+        }
+
+        // -------------------------------------------------
+        // 8. Verificar datos guardados
+        // -------------------------------------------------
+
+        const savedBooking = await tx.getFirstAsync(`
+            SELECT
+                id,
+                booking_code,
+                qr_token
+            FROM reservations
+            WHERE id = ?
+            LIMIT 1
+        `, [bookingId]);
+
+        if (!savedBooking ||!savedBooking.booking_code ||!savedBooking.qr_token) throw new Error("La reserva no pudo verificarse correctamente.");
+
+        createdBookingId = bookingId;
     });
+
+    if (!Number.isSafeInteger(createdBookingId) || createdBookingId <= 0) throw new Error("No se pudo obtener el identificador de la reserva.");
+
+    console.log("[CREATE BOOKING] Resultado:", createdBookingId);
+
+    return createdBookingId;
+
 }
 
 export async function getBookingConfirmation(id) {
@@ -299,6 +357,7 @@ export async function updateBooking(id, data) {
     const db = await getDatabase();
 
     return db.withExclusiveTransactionAsync(async tx => {
+        // 1. Verificar reserva existente.
         const booking = await tx.getFirstAsync(
             "SELECT * FROM reservations WHERE id = ?",
             [id]
@@ -314,6 +373,7 @@ export async function updateBooking(id, data) {
             );
         }
 
+        // 2. Validar datos.
         const roomId = Number(data.roomId);
         const priceCents = Number(data.priceCents);
 
@@ -321,9 +381,7 @@ export async function updateBooking(id, data) {
             throw new Error("Selecciona una habitación válida.");
         }
 
-        if (
-            !["HOURLY", "NIGHTLY"].includes(data.billingMode)
-        ) {
+        if (!["HOURLY", "NIGHTLY"].includes(data.billingMode)) {
             throw new Error("Modalidad inválida.");
         }
 
@@ -344,78 +402,70 @@ export async function updateBooking(id, data) {
             throw new Error("El precio no es válido.");
         }
 
-        const room = await tx.getFirstAsync(
-            `
-            SELECT id
-            FROM rooms
-            WHERE id = ?
-              AND is_active = 1
-              AND operational_status NOT IN (
-                  'MAINTENANCE', 'CLEANING'
-              )
+        // 3. Verificar habitación habilitada.
+        const room = await tx.getFirstAsync(`
+            SELECT r.id
+            FROM rooms r
+            JOIN room_types rt
+                ON rt.id = r.room_type_id
+            WHERE r.id = ?
+              AND r.is_active = 1
+              AND rt.is_active = 1
+              AND r.operational_status = 'AVAILABLE'
             LIMIT 1
-            `,
-            [roomId]
-        );
+        `, [roomId]);
 
         if (!room) {
             throw new Error(
-                "La habitación seleccionada no está habilitada."
+                "La habitación no está disponible. Verifica si está ocupada, en limpieza o mantenimiento."
             );
         }
 
-        const conflict = await tx.getFirstAsync(
-            `
+        // 4. Buscar reservas que se superpongan.
+        // Excluir la propia reserva.
+        const conflict = await tx.getFirstAsync(`
             SELECT id
             FROM reservations
             WHERE room_id = ?
               AND id <> ?
               AND status IN (
-                  'PENDING', 'CONFIRMED', 'CHECKED_IN'
+                  'PENDING',
+                  'CONFIRMED'
               )
               AND start_at < ?
               AND end_at > ?
             LIMIT 1
-            `,
-            [
-                roomId,
-                id,
-                data.endAt,
-                data.startAt,
-            ]
-        );
+        `, [
+            roomId,
+            id,
+            data.endAt,
+            data.startAt,
+        ]);
 
         if (conflict) {
             throw new Error(
-                "La habitación ya tiene una reserva en ese horario."
+                "La habitación ya tiene otra reserva en el horario seleccionado."
             );
         }
 
-        const activeStay = await tx.getFirstAsync(
-            `
+        // 5. Verificar cualquier estadía activa.
+        // No depender de la salida programada.
+        const activeStay = await tx.getFirstAsync(`
             SELECT id
             FROM stays
             WHERE room_id = ?
               AND status = 'ACTIVE'
-              AND check_in_at < ?
-              AND scheduled_check_out_at > ?
             LIMIT 1
-            `,
-            [
-                roomId,
-                data.endAt,
-                data.startAt,
-            ]
-        );
+        `, [roomId]);
 
         if (activeStay) {
             throw new Error(
-                "La habitación tiene una estadía activa en ese horario."
+                "La habitación tiene una estadía activa. Debe realizarse el check-out antes de volver a reservar."
             );
         }
 
-        await tx.runAsync(
-            `
+        // 6. Actualizar reserva.
+        const result = await tx.runAsync(`
             UPDATE reservations
             SET
                 room_id = ?,
@@ -425,17 +475,22 @@ export async function updateBooking(id, data) {
                 agreed_price_cents = ?,
                 notes = ?
             WHERE id = ?
-            `,
-            [
-                roomId,
-                data.billingMode,
-                data.startAt,
-                data.endAt,
-                priceCents,
-                data.notes?.trim() || null,
-                id,
-            ]
-        );
+              AND status IN ('PENDING', 'CONFIRMED')
+        `, [
+            roomId,
+            data.billingMode,
+            data.startAt,
+            data.endAt,
+            priceCents,
+            data.notes?.trim() || null,
+            id,
+        ]);
+
+        if (result.changes !== 1) {
+            throw new Error(
+                "No se pudo actualizar la reserva."
+            );
+        }
 
         return true;
     });

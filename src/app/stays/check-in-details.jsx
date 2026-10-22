@@ -1,31 +1,15 @@
-
 import { useCallback, useState } from "react";
-import {
-    ActivityIndicator,
-    Alert,
-    StyleSheet,
-    TextInput,
-    View,
-} from "react-native";
+import { ActivityIndicator, Alert, StyleSheet, TextInput, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
-import {
-    ArrowLeft,
-    BedDouble,
-    CalendarDays,
-    CheckCircle2,
-    UserRound,
-} from "lucide-react-native";
+import { ArrowLeft, BedDouble, CalendarDays, CheckCircle2, UserRound } from "lucide-react-native";
 
 import ScreenTab from "../../components/ui/ScreenTab";
 import TextField from "../../components/ui/TextField";
 import Button from "../../components/ui/Button";
 import { tokens } from "../../styles/tokens";
 
-import {
-    getCheckInDetails,
-    confirmCheckIn,
-} from "../../services/stays.service";
+import { getCheckInDetails, confirmCheckIn } from "../../services/stays.service";
 
 const C = tokens.colors;
 
@@ -33,11 +17,7 @@ function Detail({ label, value }) {
     return (
         <View style={styles.detail}>
             <TextField label={label} size="sm" color="gray" />
-            <TextField
-                label={String(value ?? "—")}
-                size="sm"
-                weight="medium"
-            />
+            <TextField label={String(value ?? "—")} size="sm" weight="medium" />
         </View>
     );
 }
@@ -114,7 +94,7 @@ export default function CheckInScreen() {
                                     {
                                         text: "Entendido",
                                         onPress: () =>
-                                            router.replace("/reservations"),
+                                            router.replace("/(tabs)/bookings"),
                                     },
                                 ]
                             );
