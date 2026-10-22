@@ -1,6 +1,34 @@
 import { getDatabase } from "../database";
 import { getBookingRooms, createBooking } from "../database/repositories/bookings.repository";
 
+
+/**
+ * Cada bloque de tiempo iniciado se factura completo.
+ * La noche dura las horas configuradas por el establecimiento (8 por defecto).
+ */
+export function calculateBookingPriceCents({ startAt, endAt, billingMode, room, nightDurationHours = 8 }) {
+    const start = new Date(startAt).getTime();
+    const end = new Date(endAt).getTime();
+    const blockHours = billingMode === "HOURLY" ? 1 : Number(nightDurationHours);
+    const rate = billingMode === "HOURLY" ? room?.hourly_price_cents : room?.nightly_price_cents;
+    if (!["HOURLY", "NIGHTLY"].includes(billingMode) ||
+        !Number.isFinite(start) || !Number.isFinite(end) || end <= start ||
+        !Number.isSafeInteger(blockHours) || blockHours < 1 || blockHours > 24 ||
+        !Number.isSafeInteger(rate) || rate < 0) {
+        throw new Error("No se puede calcular la tarifa con los datos seleccionados.");
+    }
+    const blocks = Math.ceil((end - start) / (blockHours * 60 * 60 * 1000));
+    const total = blocks * rate;
+    if (!Number.isSafeInteger(total)) throw new Error("El importe calculado excede el límite permitido.");
+    return total;
+}
+
+export async function getNightDurationHours() {
+    const db = await getDatabase();
+    const row = await db.getFirstAsync("SELECT night_duration_hours FROM hotel_settings WHERE id = 1");
+    return Number(row?.night_duration_hours ?? 8);
+}
+
 export async function listBookings() {
     const db = await getDatabase();
 
