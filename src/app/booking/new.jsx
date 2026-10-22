@@ -196,7 +196,10 @@ export default function NewBooking() {
     // Estadía
     const [startDate, setStartDate] = useState(null);
     const [endDate, setEndDate] = useState(null);
-    const [origin, setOrigin] = useState("");
+    const [bookingOrigin, setBookingOrigin] = useState("DIRECT");
+    const [deposit, setDeposit] = useState("");
+    const [depositMethod, setDepositMethod] = useState("CASH");
+    const [depositReference, setDepositReference] = useState("");
 
     // Picker nativo
     const [pickerTarget, setPickerTarget] = useState(null);
@@ -447,6 +450,10 @@ export default function NewBooking() {
         }
     }, [nightDurationHours]);
 
+    const depositCents = deposit.trim()
+        ? Math.round(Number(deposit.replace(",", ".")) * 100)
+        : 0;
+
     const handleSave = async () => {
         if (saving) return;
 
@@ -474,6 +481,11 @@ export default function NewBooking() {
             return;
         }
 
+        if (!Number.isSafeInteger(depositCents) || depositCents < 0) {
+            Alert.alert("Adelanto inválido", "Ingresa un importe válido.");
+            return;
+        }
+
         setSaving(true);
 
         try {
@@ -490,6 +502,10 @@ export default function NewBooking() {
                 endAt: toLocalISO(endDate),
                 price,
                 notes,
+                bookingOrigin,
+                depositCents,
+                depositMethod,
+                depositReference,
             });
 
             const reservationId = Number(bookingId);
@@ -681,12 +697,22 @@ export default function NewBooking() {
                     onPress={() => openPicker("end")}
                 />
 
-                <Field
-                    label="Procedencia (opcional)"
-                    value={origin}
-                    onChangeText={setOrigin}
-                    placeholder="Ej. Huancayo, Junín"
-                />
+                <View style={styles.field}>
+                    <TextField label="Canal de reserva" size="sm" weight="semibold" />
+                    <View style={styles.modeRow}>
+                        {[
+                            ["DIRECT", "Directa"], ["WHATSAPP", "WhatsApp"],
+                            ["PHONE", "Teléfono"], ["WALK_IN", "Presencial"],
+                            ["WEB", "Web"], ["OTHER", "Otro"],
+                        ].map(([value, label]) => (
+                            <Pressable key={value} onPress={() => setBookingOrigin(value)}
+                                style={[styles.mode, bookingOrigin === value && styles.modeActive]}>
+                                <TextField label={label} size="xs"
+                                    style={{ color: bookingOrigin === value ? C.white : C.black }} />
+                            </Pressable>
+                        ))}
+                    </View>
+                </View>
 
                 <SelectField
                     label="Habitación *"
@@ -752,6 +778,35 @@ export default function NewBooking() {
                     placeholder="Selecciona habitación y fechas"
                     keyboardType="decimal-pad"
                 />
+            </View>
+
+            <View style={styles.section}>
+                <TextField label="Pago inicial (opcional)" size="lg" weight="semibold" />
+                <Field label="Adelanto (S/)" value={deposit} onChangeText={setDeposit}
+                    placeholder="0.00" keyboardType="decimal-pad" />
+                {depositCents > 0 && (
+                    <>
+                        <View style={styles.modeRow}>
+                            {[
+                                ["CASH", "Efectivo"], ["YAPE", "Yape"],
+                                ["PLIN", "Plin"], ["TRANSFER", "Transferencia"],
+                                ["CARD", "Tarjeta"],
+                            ].map(([value, label]) => (
+                                <Pressable key={value} onPress={() => setDepositMethod(value)}
+                                    style={[styles.mode, depositMethod === value && styles.modeActive]}>
+                                    <TextField label={label} size="xs"
+                                        style={{ color: depositMethod === value ? C.white : C.black }} />
+                                </Pressable>
+                            ))}
+                        </View>
+                        {depositMethod !== "CASH" && (
+                            <Field label="Número de operación *" value={depositReference}
+                                onChangeText={setDepositReference} placeholder="Referencia del pago" />
+                        )}
+                        <TextField label="El adelanto requiere una caja abierta y se registra automáticamente en Cobros."
+                            size="xs" color="gray" />
+                    </>
+                )}
             </View>
 
             <Field
