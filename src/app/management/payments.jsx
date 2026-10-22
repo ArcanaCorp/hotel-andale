@@ -37,6 +37,7 @@ import {
     listReceivableReservations,
     getPaymentsSummary,
     registerPayment,
+    registerRefund,
 } from "../../database/repositories/payments.repository";
 
 const C = tokens.colors;
@@ -108,6 +109,12 @@ export default function PaymentsScreen() {
 
     const [paymentSheet, setPaymentSheet] =
         useState(false);
+    const [refundSheet, setRefundSheet] = useState(false);
+    const [refundReservationId, setRefundReservationId] = useState(null);
+    const [refundAmount, setRefundAmount] = useState("");
+    const [refundReason, setRefundReason] = useState("");
+    const [refundMethod, setRefundMethod] = useState("CASH");
+    const [refundReference, setRefundReference] = useState("");
     const [reservationSheet, setReservationSheet] =
         useState(false);
 
@@ -158,7 +165,7 @@ export default function PaymentsScreen() {
         );
 
     const remainingCents = selectedReservation
-        ? selectedReservation.agreed_price_cents -
+        ? selectedReservation.total_cents -
           selectedReservation.paid_cents
         : 0;
 
@@ -181,7 +188,7 @@ export default function PaymentsScreen() {
         setAmount(
             (
                 (
-                    item.agreed_price_cents -
+                    item.total_cents -
                     item.paid_cents
                 ) / 100
             ).toFixed(2)
@@ -226,6 +233,42 @@ export default function PaymentsScreen() {
                 error?.message ||
                     "Ocurrió un error."
             );
+        } finally {
+            setSaving(false);
+        }
+    };
+
+
+    const openRefund = payment => {
+        const targetId = payment.reservation_id || payment.reservationId;
+        if (!targetId) {
+            Alert.alert("Devolución no disponible", "No se encontró una reserva asociada.");
+            return;
+        }
+        setRefundReservationId(targetId);
+        setRefundAmount("");
+        setRefundMethod(payment.method === "OTHER" ? "CASH" : payment.method);
+        setRefundReference("");
+        setRefundReason("");
+        setRefundSheet(true);
+    };
+
+    const handleRefund = async () => {
+        if (saving) return;
+        setSaving(true);
+        try {
+            await registerRefund({
+                reservationId: refundReservationId,
+                amountCents: parseMoney(refundAmount),
+                paymentMethod: refundMethod,
+                reference: refundReference,
+                notes: refundReason,
+            });
+            setRefundSheet(false);
+            await load();
+            Alert.alert("Devolución registrada", "Se descontó del saldo neto y se incorporó como egreso de caja.");
+        } catch (error) {
+            Alert.alert("No se pudo registrar la devolución", error?.message || "Ocurrió un error.");
         } finally {
             setSaving(false);
         }
@@ -362,7 +405,7 @@ export default function PaymentsScreen() {
                             style={styles.paymentRow}
                         >
                             <View style={styles.paymentIcon}>
-                                {item.payment_method ===
+                                {item.method ===
                                 "CASH" ? (
                                     <Banknote
                                         size={21}
@@ -402,26 +445,69 @@ export default function PaymentsScreen() {
                                         METHODS.find(
                                             method =>
                                                 method.value ===
-                                                item.payment_method
+                                                item.method
                                         )?.label ||
-                                        item.payment_method
+                                        item.method
                                     }
                                     size="xs"
                                     color="gray"
                                 />
                             </View>
 
-                            <TextField
-                                label={money(
-                                    item.amount_cents
+                            <View style={{ alignItems: "flex-end", gap: 5 }}>
+                                <TextField
+                                    label={`${item.type === "REFUND" ? "−" : "+"}${money(item.amount_cents)}`}
+                                    size="sm"
+                                    weight="semibold"
+                                />
+                                {item.type === "PAYMENT" && (
+                                    <Button text="Devolver" size="sm" variant="secondary"
+                                        onPress={() => openRefund(item)} />
                                 )}
-                                size="sm"
-                                weight="semibold"
-                            />
+                            </View>
                         </View>
                     ))
                 )}
             </View>
+
+            <BottomSheet
+                visible={refundSheet}
+                title="Registrar devolución"
+                busy={saving}
+                onClose={() => setRefundSheet(false)}
+            >
+                <View style={styles.sheet}>
+                    <TextField label="Reserva asociada" size="sm" color="gray" />
+                    <TextField label={String(refundReservationId || "—")} size="md" weight="semibold" />
+                    <Field label="Monto a devolver (S/)">
+                        <TextInput value={refundAmount} onChangeText={setRefundAmount}
+                            keyboardType="decimal-pad" placeholder="0.00" style={styles.input} />
+                    </Field>
+                    <Field label="Método de devolución">
+                        <View style={styles.methods}>
+                            {METHODS.map(method => (
+                                <Pressable key={method.value}
+                                    onPress={() => setRefundMethod(method.value)}
+                                    style={[styles.method, refundMethod === method.value && styles.methodSelected]}>
+                                    <TextField label={method.label} size="xs" />
+                                </Pressable>
+                            ))}
+                        </View>
+                    </Field>
+                    {refundMethod !== "CASH" && (
+                        <Field label="Número de operación">
+                            <TextInput value={refundReference} onChangeText={setRefundReference}
+                                placeholder="Referencia de devolución" style={styles.input} />
+                        </Field>
+                    )}
+                    <Field label="Motivo de devolución">
+                        <TextInput value={refundReason} onChangeText={setRefundReason}
+                            placeholder="Motivo obligatorio" style={styles.input} />
+                    </Field>
+                    <Button text="Registrar devolución" variant="secondary"
+                        disabled={saving} loading={saving} onPress={handleRefund} />
+                </View>
+            </BottomSheet>
 
             {/* REGISTRAR COBRO */}
             <BottomSheet
@@ -602,7 +688,7 @@ export default function PaymentsScreen() {
                                     <TextField
                                         label={
                                             `Pendiente: ${money(
-                                                item.agreed_price_cents -
+                                                item.total_cents -
                                                 item.paid_cents
                                             )}`
                                         }

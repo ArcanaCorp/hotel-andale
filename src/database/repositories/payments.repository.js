@@ -14,70 +14,52 @@ export async function listReceivableReservations() {
 
     return db.getAllAsync(`
         SELECT
-            r.id,
-            r.booking_code,
-            r.status,
-            r.agreed_price_cents,
-
-            g.first_name,
-            g.last_name,
-
-            rm.number AS room_number,
-
-            COALESCE(
-                SUM(p.amount_cents),
-                0
-            ) AS paid_cents
-
+            r.id, r.booking_code, r.status, r.agreed_price_cents,
+            g.first_name, g.last_name, rm.number AS room_number,
+            COALESCE((
+                SELECT SUM(CASE WHEN p.type = 'REFUND'
+                    THEN -p.amount_cents ELSE p.amount_cents END)
+                FROM payments p
+                LEFT JOIN stays s ON s.id = p.stay_id
+                WHERE p.reservation_id = r.id OR s.reservation_id = r.id
+            ), 0) AS paid_cents,
+            r.agreed_price_cents + COALESCE((
+                SELECT SUM(c.total_cents)
+                FROM charges c JOIN stays s ON s.id = c.stay_id
+                WHERE s.reservation_id = r.id
+            ), 0) AS total_cents
         FROM reservations r
-
-        JOIN guests g
-            ON g.id = r.guest_id
-
-        JOIN rooms rm
-            ON rm.id = r.room_id
-
-        LEFT JOIN payments p
-            ON p.reservation_id = r.id
-
-        WHERE r.status IN (
-            'PENDING',
-            'CONFIRMED',
-            'CHECKED_IN'
-        )
-
-        GROUP BY r.id
-
-        HAVING
-            r.agreed_price_cents -
-            COALESCE(SUM(p.amount_cents), 0) > 0
-
+        LEFT JOIN guests g ON g.id = r.guest_id
+        JOIN rooms rm ON rm.id = r.room_id
+        WHERE r.status IN ('PENDING', 'CONFIRMED', 'CHECKED_IN')
+          AND (
+              r.agreed_price_cents + COALESCE((
+                  SELECT SUM(c.total_cents)
+                  FROM charges c JOIN stays s ON s.id = c.stay_id
+                  WHERE s.reservation_id = r.id
+              ), 0)
+              - COALESCE((
+                  SELECT SUM(CASE WHEN p.type = 'REFUND'
+                      THEN -p.amount_cents ELSE p.amount_cents END)
+                  FROM payments p
+                  LEFT JOIN stays s ON s.id = p.stay_id
+                  WHERE p.reservation_id = r.id OR s.reservation_id = r.id
+              ), 0)
+          ) > 0
         ORDER BY r.start_at DESC
     `);
 }
 
 export async function listPayments() {
     const db = await getDatabase();
-
     return db.getAllAsync(`
-        SELECT
-            p.*,
-            r.booking_code,
-            g.first_name,
-            g.last_name,
-            rm.number AS room_number
-
+        SELECT p.*, r.booking_code, g.first_name, g.last_name,
+               rm.number AS room_number
         FROM payments p
-
-        JOIN reservations r
-            ON r.id = p.reservation_id
-
-        JOIN guests g
-            ON g.id = r.guest_id
-
-        JOIN rooms rm
-            ON rm.id = r.room_id
-
+        LEFT JOIN stays s ON s.id = p.stay_id
+        LEFT JOIN reservations r ON r.id = COALESCE(p.reservation_id, s.reservation_id)
+        LEFT JOIN guests g ON g.id = COALESCE(r.guest_id, s.primary_guest_id)
+        LEFT JOIN rooms rm ON rm.id = COALESCE(r.room_id, s.room_id)
         ORDER BY p.created_at DESC, p.id DESC
     `);
 }
@@ -126,7 +108,8 @@ export async function getPaymentsSummary() {
 export async function registerPayment(data) {
     const db = await getDatabase();
 
-    return db.withExclusiveTransactionAsync(async tx => {
+    let createdPaymentId = null;
+    await db.withExclusiveTransactionAsync(async tx => {
         const reservationId = Number(
             data.reservationId
         );
@@ -154,9 +137,10 @@ export async function registerPayment(data) {
         }
 
         if (!METHODS.includes(data.paymentMethod)) {
-            throw new Error(
-                "Método de pago inválido."
-            );
+            throw new Error("Método de pago inválido.");
+        }
+        if (data.paymentMethod !== "CASH" && !String(data.reference || "").trim()) {
+            throw new Error("Ingresa la referencia del pago.");
         }
 
         const reservation = await tx.getFirstAsync(
@@ -188,22 +172,26 @@ export async function registerPayment(data) {
             );
         }
 
-        const paid = await tx.getFirstAsync(
-            `
-            SELECT
-                COALESCE(
-                    SUM(amount_cents),
-                    0
-                ) AS total
-            FROM payments
-            WHERE reservation_id = ?
-            `,
-            [reservationId]
-        );
+        const paid = await tx.getFirstAsync(`
+            SELECT COALESCE(SUM(
+                CASE WHEN p.type = 'REFUND' THEN -p.amount_cents
+                ELSE p.amount_cents END
+            ), 0) AS total
+            FROM payments p
+            LEFT JOIN stays s ON s.id = p.stay_id
+            WHERE p.reservation_id = ? OR s.reservation_id = ?
+        `, [reservationId, reservationId]);
+
+        const charges = await tx.getFirstAsync(`
+            SELECT COALESCE(SUM(c.total_cents), 0) AS total
+            FROM charges c JOIN stays s ON s.id = c.stay_id
+            WHERE s.reservation_id = ?
+        `, [reservationId]);
 
         const remaining =
-            reservation.agreed_price_cents -
-            paid.total;
+            reservation.agreed_price_cents +
+            Number(charges?.total || 0) -
+            Number(paid?.total || 0);
 
         if (amountCents > remaining) {
             throw new Error(
@@ -277,6 +265,88 @@ export async function registerPayment(data) {
             ]
         );
 
-        return result.lastInsertRowId;
+        createdPaymentId = result.lastInsertRowId;
     });
+
+    return createdPaymentId;
+}
+
+/**
+ * Registra una devolución real y su egreso de caja en una sola transacción.
+ * No permite devolver más dinero del recibido neto ni operar sin caja abierta.
+ */
+export async function registerRefund(data) {
+    const db = await getDatabase();
+    const reservationId = Number(data.reservationId);
+    const amountCents = Number(data.amountCents);
+    const method = data.paymentMethod;
+    if (!String(data.notes || "").trim()) {
+        throw new Error("Indica el motivo de la devolución.");
+    }
+    if (!Number.isSafeInteger(reservationId) || reservationId <= 0) {
+        throw new Error("Selecciona una reserva válida.");
+    }
+    if (!Number.isSafeInteger(amountCents) || amountCents <= 0) {
+        throw new Error("La devolución debe ser mayor a cero.");
+    }
+    if (!METHODS.includes(method)) {
+        throw new Error("Método de devolución inválido.");
+    }
+    if (method !== "CASH" && !String(data.reference || "").trim()) {
+        throw new Error("Ingresa la referencia de la devolución.");
+    }
+
+    let createdRefundId = null;
+    await db.withExclusiveTransactionAsync(async tx => {
+        const reservation = await tx.getFirstAsync(
+            "SELECT id, booking_code FROM reservations WHERE id = ?",
+            [reservationId]
+        );
+        if (!reservation) throw new Error("La reserva no existe.");
+
+        const paid = await tx.getFirstAsync(`
+            SELECT COALESCE(SUM(CASE WHEN p.type = 'REFUND'
+                THEN -p.amount_cents ELSE p.amount_cents END), 0) AS total
+            FROM payments p
+            LEFT JOIN stays s ON s.id = p.stay_id
+            WHERE p.reservation_id = ? OR s.reservation_id = ?
+        `, [reservationId, reservationId]);
+        if (amountCents > Number(paid?.total || 0)) {
+            throw new Error("La devolución supera el importe neto cobrado.");
+        }
+
+        const session = await tx.getFirstAsync(
+            "SELECT id FROM cash_sessions WHERE status = 'OPEN' LIMIT 1"
+        );
+        if (!session) {
+            throw new Error("Debes abrir una caja antes de registrar devoluciones.");
+        }
+
+        const timestamp = new Date().toISOString();
+        const movement = await tx.runAsync(`
+            INSERT INTO cash_movements
+            (session_id, type, category, description, amount_cents, payment_method, created_at)
+            VALUES (?, 'EXPENSE', ?, ?, ?, ?, ?)
+        `, [
+            session.id,
+            "Devolución de hospedaje",
+            `Reserva ${reservation.booking_code}`,
+            amountCents,
+            method,
+            timestamp,
+        ]);
+        const result = await tx.runAsync(`
+            INSERT INTO payments
+            (reservation_id, amount_cents, method, type, reference, notes, cash_movement_id, created_at)
+            VALUES (?, ?, ?, 'REFUND', ?, ?, ?, ?)
+        `, [
+            reservationId, amountCents, method,
+            String(data.reference || "").trim() || null,
+            String(data.notes || "").trim() || null,
+            movement.lastInsertRowId,
+            timestamp,
+        ]);
+        createdRefundId = result.lastInsertRowId;
+    });
+    return createdRefundId;
 }

@@ -20,7 +20,8 @@ export async function openCashSession({
 }) {
     const db = await getDatabase();
 
-    return db.withExclusiveTransactionAsync(async tx => {
+    let createdId = null;
+    await db.withExclusiveTransactionAsync(async tx => {
         const existing = await tx.getFirstAsync(`
             SELECT id
             FROM cash_sessions
@@ -58,14 +59,17 @@ export async function openCashSession({
             ]
         );
 
-        return result.lastInsertRowId;
+        createdId = result.lastInsertRowId;
     });
+
+    return createdId;
 }
 
 export async function registerCashMovement(data) {
     const db = await getDatabase();
 
-    return db.withExclusiveTransactionAsync(async tx => {
+    let createdId = null;
+    await db.withExclusiveTransactionAsync(async tx => {
         const session = await tx.getFirstAsync(`
             SELECT id
             FROM cash_sessions
@@ -127,8 +131,10 @@ export async function registerCashMovement(data) {
             ]
         );
 
-        return result.lastInsertRowId;
+        createdId = result.lastInsertRowId;
     });
+
+    return createdId;
 }
 
 export async function getCashSummary() {
@@ -201,7 +207,8 @@ export async function closeCashSession({
 }) {
     const db = await getDatabase();
 
-    return db.withExclusiveTransactionAsync(async tx => {
+    let closingResult = null;
+    await db.withExclusiveTransactionAsync(async tx => {
         const session = await tx.getFirstAsync(`
             SELECT *
             FROM cash_sessions
@@ -275,10 +282,8 @@ export async function closeCashSession({
             ]
         );
 
-        return {
-            expected,
-            counted: closingAmountCents,
-            difference,
-        };
+        closingResult = { expected, counted: closingAmountCents, difference };
     });
+
+    return closingResult;
 }
