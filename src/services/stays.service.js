@@ -286,7 +286,8 @@ export async function confirmCheckIn(
     const id = positiveId(reservationId, "Reserva");
     const db = await getDatabase();
 
-    return db.withExclusiveTransactionAsync(async tx => {
+    let transactionResult = null;
+    await db.withExclusiveTransactionAsync(async tx => {
         const reservation = await getReservation(tx, id);
 
         if (!reservation) {
@@ -467,13 +468,14 @@ export async function confirmCheckIn(
             ]
         );
 
-        return {
+        transactionResult = {
             stayId,
             reservationId: id,
             roomId: reservation.room_id,
             roomStatus: "OCCUPIED",
         };
     });
+    return transactionResult;
 }
 
 // Obtener datos de cierre de una estadía.
@@ -532,7 +534,8 @@ export async function confirmCheckOut(stayId) {
     const id = positiveId(stayId, "Estadía");
     const db = await getDatabase();
 
-    return db.withExclusiveTransactionAsync(async tx => {
+    let transactionResult = null;
+    await db.withExclusiveTransactionAsync(async tx => {
         const stay = await tx.getFirstAsync(
             `
             SELECT *
@@ -633,12 +636,13 @@ export async function confirmCheckOut(stayId) {
             ]
         );
 
-        return {
+        transactionResult = {
             stayId: id,
             roomId: stay.room_id,
             roomStatus: "CLEANING",
         };
     });
+    return transactionResult;
 }
 
 // Confirmar limpieza y habilitar la habitación.
@@ -646,7 +650,8 @@ export async function markRoomClean(roomId) {
     const id = positiveId(roomId, "Habitación");
     const db = await getDatabase();
 
-    return db.withExclusiveTransactionAsync(async tx => {
+    let transactionResult = null;
+    await db.withExclusiveTransactionAsync(async tx => {
         const activeStay = await tx.getFirstAsync(
             `
             SELECT id
@@ -681,11 +686,12 @@ export async function markRoomClean(roomId) {
             );
         }
 
-        return {
+        transactionResult = {
             roomId: id,
             roomStatus: "AVAILABLE",
         };
     });
+    return transactionResult;
 }
 
 // Función auxiliar para navegar directamente
