@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ActivityIndicator, Alert, Platform, Pressable, StyleSheet, TextInput, View } from "react-native";
 
 import { useRouter } from "expo-router";
@@ -11,7 +11,7 @@ import BottomSheet from "../../components/ui/BottomSheet";
 import TextField from "../../components/ui/TextField";
 import Button from "../../components/ui/Button";
 
-import { listAvailableBookingRooms, registerBooking } from "../../services/bookings.service";
+import { listAvailableBookingRooms, registerBooking, calculateBookingPriceCents, getNightDurationHours } from "../../services/bookings.service";
 
 import { tokens } from "../../styles/tokens";
 import { lookupGuest } from "../../services/guestLookup.service";
@@ -209,6 +209,10 @@ export default function NewBooking() {
     const [selectedRoom, setSelectedRoom] = useState(null);
     const [billingMode, setBillingMode] = useState("NIGHTLY");
     const [price, setPrice] = useState("");
+    const [nightDurationHours, setNightDurationHours] = useState(8);
+    useEffect(() => {
+        getNightDurationHours().then(setNightDurationHours).catch(console.error);
+    }, []);
     const [notes, setNotes] = useState("");
 
     // Modales y estados
@@ -402,39 +406,32 @@ export default function NewBooking() {
         }
     };
 
+    const updateCalculatedPrice = (room, mode) => {
+        if (!room || !startDate || !endDate) {
+            setPrice("");
+            return;
+        }
+        try {
+            const cents = calculateBookingPriceCents({
+                startAt: startDate, endAt: endDate,
+                billingMode: mode, room, nightDurationHours,
+            });
+            setPrice((cents / 100).toFixed(2));
+        } catch {
+            setPrice("");
+        }
+    };
+
     const selectRoom = room => {
         setRoomId(room.id);
         setSelectedRoom(room);
-
-        const cents =
-            billingMode === "HOURLY"
-                ? room.hourly_price_cents
-                : room.nightly_price_cents;
-
-        setPrice(
-            cents == null
-                ? ""
-                : (cents / 100).toFixed(2)
-        );
-
+        updateCalculatedPrice(room, billingMode);
         setSheet(null);
     };
 
     const changeMode = mode => {
         setBillingMode(mode);
-
-        if (!selectedRoom) return;
-
-        const cents =
-            mode === "HOURLY"
-                ? selectedRoom.hourly_price_cents
-                : selectedRoom.nightly_price_cents;
-
-        setPrice(
-            cents == null
-                ? ""
-                : (cents / 100).toFixed(2)
-        );
+        updateCalculatedPrice(selectedRoom, mode);
     };
 
     const handleSave = async () => {
@@ -733,11 +730,13 @@ export default function NewBooking() {
                     })}
                 </View>
 
+                <TextField label={`Noche: ${nightDurationHours} h · Se cobra cada bloque iniciado`} size="xs" color="gray" />
                 <Field
-                    label="Precio total acordado (S/) *"
+                    label="Precio total calculado (S/) *"
                     value={price}
                     onChangeText={setPrice}
-                    placeholder="Ej. 120.00"
+                    editable={false}
+                    placeholder="Selecciona habitación y fechas"
                     keyboardType="decimal-pad"
                 />
             </View>
