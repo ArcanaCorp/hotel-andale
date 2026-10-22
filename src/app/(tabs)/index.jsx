@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, ToastAndroid, View } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
-import { BedDouble, CalendarDays, CalendarPlus, ChevronRight, DoorClosed, LogOut, RefreshCw, Wallet, WifiOff } from "lucide-react-native";
+import { BedDouble, CalendarDays, CalendarPlus, ChevronRight, DoorClosed, LogOut, RefreshCw, Wallet, WifiOff, Sparkles, CalendarCheck } from "lucide-react-native";
 import TextField from "../../components/ui/TextField";
 import ScreenTab from "../../components/ui/ScreenTab";
 import { useProfile } from "../../context/ProfileContext";
@@ -134,6 +134,8 @@ export default function IndexTab() {
                         <StatCard title="Ocupadas" value={rooms?.occupied ?? 0} subtitle="Habitaciones en uso" icon={DoorClosed}/>
                         <StatCard title="Ingresos de hoy" value={money(dashboard?.incomeCents ?? 0)} subtitle="Pagos netos" icon={Wallet} />
                         <StatCard title="Salidas pendientes" value={departures.length} subtitle="Hasta el final de hoy" icon={LogOut} />
+                        <StatCard title="Llegadas de hoy" value={dashboard?.arrivalsToday ?? 0} subtitle="Reservas programadas" icon={CalendarCheck} />
+                        <StatCard title="Por limpiar" value={dashboard?.pendingCleaning ?? 0} subtitle="Habitaciones en limpieza" icon={Sparkles} />
                     </View>
 
                     <View style={styles.sectionHeader}>
