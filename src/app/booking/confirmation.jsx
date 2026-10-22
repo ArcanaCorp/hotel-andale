@@ -605,7 +605,7 @@ export default function BookingConfirmation() {
             <ScreenTab>
                 <TextField label="No se pudo mostrar la reserva" size="lg" weight="bold"/>
                 <TextField label={loadError || "No hay datos disponibles."} size="sm" color="gray"/>
-                <Button text="Volver a reservas" onPress={() => router.replace("/(tabs)/bookings")}/>
+                <Button text="Volver a reservas" onPress={() => router.replace({ pathname: "/booking/details", params: { id: String(id) } })}/>
             </ScreenTab>
         );
     }
