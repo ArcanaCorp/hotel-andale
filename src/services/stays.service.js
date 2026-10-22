@@ -557,11 +557,7 @@ export async function confirmCheckOut(stayId) {
 
         const balance = await getPaymentBalance(tx, stay);
 
-        if (!canCheckOut({
-            stayStatus: stay.status,
-            roomStatus: "OCCUPIED",
-            balanceCents: balance.balanceCents,
-        })) {
+        if (balance.balanceCents > 0) {
             throw new Error(
                 `Hay un saldo pendiente de ${money(balance.balanceCents)}. Registra el pago antes del check-out.`
             );
@@ -576,7 +572,11 @@ export async function confirmCheckOut(stayId) {
             [stay.room_id]
         );
 
-        if (room?.operational_status !== "OCCUPIED") {
+        if (!canCheckOut({
+            stayStatus: stay.status,
+            roomStatus: room?.operational_status,
+            balanceCents: balance.balanceCents,
+        })) {
             throw new Error(
                 "La habitación no se encuentra en estado Ocupada."
             );
@@ -674,6 +674,18 @@ export async function markRoomClean(roomId) {
             throw new Error(
                 "La habitación todavía tiene una estadía activa."
             );
+        }
+
+        const room = await tx.getFirstAsync(
+            "SELECT operational_status, is_active FROM rooms WHERE id = ?",
+            [id]
+        );
+        if (!canMarkRoomClean({
+            roomStatus: room?.operational_status,
+            roomActive: room?.is_active === 1,
+            activeStay: Boolean(activeStay),
+        })) {
+            throw new Error("La habitación no está habilitada para finalizar limpieza.");
         }
 
         const updated = await tx.runAsync(
