@@ -29,7 +29,7 @@ export async function listReceivableReservations() {
                 WHERE s.reservation_id = r.id
             ), 0) AS total_cents
         FROM reservations r
-        JOIN guests g ON g.id = r.guest_id
+        LEFT JOIN guests g ON g.id = r.guest_id
         JOIN rooms rm ON rm.id = r.room_id
         WHERE r.status IN ('PENDING', 'CONFIRMED', 'CHECKED_IN')
           AND (
@@ -57,9 +57,9 @@ export async function listPayments() {
                rm.number AS room_number
         FROM payments p
         LEFT JOIN stays s ON s.id = p.stay_id
-        JOIN reservations r ON r.id = COALESCE(p.reservation_id, s.reservation_id)
+        LEFT JOIN reservations r ON r.id = COALESCE(p.reservation_id, s.reservation_id)
         JOIN guests g ON g.id = r.guest_id
-        JOIN rooms rm ON rm.id = r.room_id
+        LEFT JOIN rooms rm ON rm.id = r.room_id
         ORDER BY p.created_at DESC, p.id DESC
     `);
 }
