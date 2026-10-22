@@ -1,3 +1,4 @@
+import { canCheckIn, canCheckOut, canMarkRoomClean } from "./stay-lifecycle.rules.mjs";
 
 import { getDatabase } from "../database";
 
@@ -300,10 +301,12 @@ export async function confirmCheckIn(
             );
         }
 
-        if (
-            reservation.room_is_active !== 1 ||
-            reservation.operational_status !== "AVAILABLE"
-        ) {
+        if (!canCheckIn({
+            reservationStatus: reservation.status,
+            roomStatus: reservation.operational_status,
+            roomActive: reservation.room_is_active === 1,
+            existingStay: false,
+        })) {
             throw new Error(
                 "La habitación no está disponible."
             );
@@ -569,7 +572,11 @@ export async function confirmCheckOut(stayId) {
             [stay.room_id]
         );
 
-        if (room?.operational_status !== "OCCUPIED") {
+        if (!canCheckOut({
+            stayStatus: stay.status,
+            roomStatus: room?.operational_status,
+            balanceCents: balance.balanceCents,
+        })) {
             throw new Error(
                 "La habitación no se encuentra en estado Ocupada."
             );
@@ -667,6 +674,18 @@ export async function markRoomClean(roomId) {
             throw new Error(
                 "La habitación todavía tiene una estadía activa."
             );
+        }
+
+        const room = await tx.getFirstAsync(
+            "SELECT operational_status, is_active FROM rooms WHERE id = ?",
+            [id]
+        );
+        if (!canMarkRoomClean({
+            roomStatus: room?.operational_status,
+            roomActive: room?.is_active === 1,
+            activeStay: Boolean(activeStay),
+        })) {
+            throw new Error("La habitación no está habilitada para finalizar limpieza.");
         }
 
         const updated = await tx.runAsync(
