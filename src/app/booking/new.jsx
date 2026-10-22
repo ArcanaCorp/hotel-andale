@@ -434,6 +434,19 @@ export default function NewBooking() {
         updateCalculatedPrice(selectedRoom, mode);
     };
 
+    useEffect(() => {
+        if (!selectedRoom || !startDate || !endDate) return;
+        try {
+            const cents = calculateBookingPriceCents({
+                startAt: startDate, endAt: endDate, billingMode,
+                room: selectedRoom, nightDurationHours,
+            });
+            setPrice((cents / 100).toFixed(2));
+        } catch {
+            setPrice("");
+        }
+    }, [nightDurationHours]);
+
     const handleSave = async () => {
         if (saving) return;
 
