@@ -182,7 +182,7 @@ export async function runMigrations(db) {
     const row = await db.getFirstAsync("PRAGMA user_version");
     let version = row?.user_version ?? 0;
 
-    if (version > 11) {
+    if (version > 12) {
         throw new Error(
             "Versión de base de datos no compatible."
         );
@@ -245,6 +245,11 @@ export async function runMigrations(db) {
     if (version === 10) {
         await migration011(db);
         version = 11;
+    }
+
+    if (version === 11) {
+        await migration012(db);
+        version = 12;
     }
 
     return version;
@@ -601,5 +606,50 @@ async function migration011(db) {
 
             PRAGMA user_version = 11;
         `);
+    });
+}
+
+async function migration012(db) {
+    await db.withExclusiveTransactionAsync(async tx => {
+        await tx.execAsync(`
+            CREATE TABLE IF NOT EXISTS notification_settings (
+                id INTEGER PRIMARY KEY CHECK(id = 1),
+                enabled INTEGER NOT NULL DEFAULT 1,
+                checkout_alerts INTEGER NOT NULL DEFAULT 1,
+                reservation_alerts INTEGER NOT NULL DEFAULT 1,
+                room_alerts INTEGER NOT NULL DEFAULT 1,
+                cash_alerts INTEGER NOT NULL DEFAULT 1,
+                license_alerts INTEGER NOT NULL DEFAULT 1,
+                checkout_minutes INTEGER NOT NULL DEFAULT 30,
+                reservation_minutes INTEGER NOT NULL DEFAULT 60,
+                updated_at TEXT
+            );
+
+            INSERT OR IGNORE INTO notification_settings (id)
+            VALUES (1);
+
+            CREATE TABLE IF NOT EXISTS local_notifications (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                event_key TEXT NOT NULL UNIQUE,
+                category TEXT NOT NULL,
+                title TEXT NOT NULL,
+                body TEXT NOT NULL,
+                route TEXT,
+                entity_id INTEGER,
+                scheduled_at TEXT,
+                delivered_at TEXT,
+                read_at TEXT,
+                expo_notification_id TEXT,
+                created_at TEXT NOT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_local_notifications_created
+            ON local_notifications(created_at DESC);
+
+            CREATE INDEX IF NOT EXISTS idx_local_notifications_read
+            ON local_notifications(read_at);
+        `);
+
+        await tx.execAsync("PRAGMA user_version = 12");
     });
 }

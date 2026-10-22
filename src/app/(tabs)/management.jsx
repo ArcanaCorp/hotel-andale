@@ -50,7 +50,14 @@ export default function ManagementTab() {
         '/management/cash',
         '/management/payments',
         '/management/reports',
-        '/management/room-types'
+        '/management/hotel',
+        '/management/room-types',
+        '/management/rates',
+        '/management/preferences',
+        '/management/notifications',
+        '/management/backups',
+        '/management/license',
+        '/management/about',
     ];
 
     const hotelName = profile?.nombreHotel || profile?.name || "Mi establecimiento";

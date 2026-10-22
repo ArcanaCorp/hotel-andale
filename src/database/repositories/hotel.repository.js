@@ -1,60 +1,36 @@
-
-import { initializeDatabase } from "./database";
+import { initializeDatabase } from "../database";
+import { getDatabase } from "../index";
 
 export async function saveHotelProfile(profile) {
     const db = await initializeDatabase();
-
     const now = new Date().toISOString();
 
     await db.runAsync(
         `
-        INSERT INTO hotel_profile (
-            id,
-            ruc,
-            razon_social,
-            nombre_comercial,
-            estado_ruc,
-            condicion_ruc,
-            nombre_hotel,
-            tipo_establecimiento,
-            direccion,
-            departamento,
-            provincia,
-            distrito,
-            telefono,
-            email,
-            logo_uri,
-            licencia_municipal,
-            registro_hospedaje,
-            consulta_ruc_realizada,
-            consulta_ruc_fecha,
-            created_at,
-            updated_at
-        )
-        VALUES (
-            1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-        )
-        ON CONFLICT(id) DO UPDATE SET
-            ruc = excluded.ruc,
-            razon_social = excluded.razon_social,
-            nombre_comercial = excluded.nombre_comercial,
-            estado_ruc = excluded.estado_ruc,
-            condicion_ruc = excluded.condicion_ruc,
-            nombre_hotel = excluded.nombre_hotel,
-            tipo_establecimiento = excluded.tipo_establecimiento,
-            direccion = excluded.direccion,
-            departamento = excluded.departamento,
-            provincia = excluded.provincia,
-            distrito = excluded.distrito,
-            telefono = excluded.telefono,
-            email = excluded.email,
-            logo_uri = excluded.logo_uri,
-            licencia_municipal = excluded.licencia_municipal,
-            registro_hospedaje = excluded.registro_hospedaje,
-            consulta_ruc_realizada = excluded.consulta_ruc_realizada,
-            consulta_ruc_fecha = excluded.consulta_ruc_fecha,
-            updated_at = excluded.updated_at
+        UPDATE hotel_settings
+        SET
+            ruc = ?,
+            razon_social = ?,
+            nombre_comercial = ?,
+            estado_ruc = ?,
+            condicion_ruc = ?,
+            name = ?,
+            tipo_establecimiento = ?,
+            direccion = ?,
+            departamento = ?,
+            provincia = ?,
+            distrito = ?,
+            telefono = ?,
+            email = ?,
+            logo_uri = ?,
+            licencia_municipal = ?,
+            registro_hospedaje = ?,
+            consulta_ruc_realizada = ?,
+            consulta_ruc_fecha = ?,
+            is_configured = 1,
+            created_at = COALESCE(created_at, ?),
+            updated_at = ?
+        WHERE id = 1
         `,
         [
             profile.ruc,
@@ -75,7 +51,7 @@ export async function saveHotelProfile(profile) {
             profile.registroHospedaje || "",
             profile.consultaRuc?.realizada ? 1 : 0,
             profile.consultaRuc?.fecha || null,
-            profile.createdAt || now,
+            now,
             now,
         ]
     );
@@ -86,12 +62,130 @@ export async function saveHotelProfile(profile) {
 export async function getHotelProfile() {
     const db = await initializeDatabase();
 
-    return db.getFirstAsync(
-        "SELECT * FROM hotel_profile WHERE id = 1"
-    );
+    const row = await db.getFirstAsync(`
+        SELECT *
+        FROM hotel_settings
+        WHERE id = 1
+    `);
+
+    if (!row || row.is_configured !== 1) {
+        return null;
+    }
+
+    return {
+        ...row,
+        nombre_hotel: row.name,
+    };
 }
 
 export async function hasHotelProfile() {
     const profile = await getHotelProfile();
     return profile !== null;
+}
+
+const EDITABLE_FIELDS = new Set([
+    "name",
+    "ruc",
+    "razon_social",
+    "nombre_comercial",
+    "estado_ruc",
+    "condicion_ruc",
+    "tipo_establecimiento",
+    "domicilio_fiscal",
+    "direccion",
+    "departamento",
+    "provincia",
+    "distrito",
+    "telefono",
+    "email",
+    "logo_uri",
+    "licencia_municipal",
+    "registro_hospedaje",
+]);
+
+export async function getHotelDetails() {
+    const db = await getDatabase();
+
+    return db.getFirstAsync(`
+        SELECT *
+        FROM hotel_settings
+        WHERE id = 1
+    `);
+}
+
+export async function updateHotelDetails(data) {
+    const db = await getDatabase();
+
+    const entries = Object.entries(data).filter(
+        ([key]) => EDITABLE_FIELDS.has(key)
+    );
+
+    if (!entries.length) {
+        throw new Error(
+            "No hay campos para actualizar."
+        );
+    }
+
+    if (
+        "name" in data &&
+        !String(data.name || "").trim()
+    ) {
+        throw new Error(
+            "El nombre del hotel es obligatorio."
+        );
+    }
+
+    if ("ruc" in data) {
+        const ruc = String(data.ruc || "").trim();
+
+        if (ruc && !/^\d{11}$/.test(ruc)) {
+            throw new Error(
+                "El RUC debe contener 11 dígitos."
+            );
+        }
+    }
+
+    if ("email" in data) {
+        const email = String(data.email || "").trim();
+
+        if (
+            email &&
+            !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+        ) {
+            throw new Error(
+                "Ingresa un correo válido."
+            );
+        }
+    }
+
+    const assignments = entries
+        .map(([key]) => `${key} = ?`)
+        .join(", ");
+
+    const values = entries.map(([, value]) =>
+        value == null
+            ? null
+            : String(value).trim() || null
+    );
+
+    const result = await db.runAsync(
+        `
+        UPDATE hotel_settings
+        SET ${assignments},
+            updated_at = ?
+        WHERE id = 1
+        `,
+        [
+            ...values,
+            new Date().toISOString(),
+        ]
+    );
+
+    if (result.changes === 0) {
+        throw new Error(
+            "No se encontró el registro del hotel."
+        );
+    }
+
+    return getHotelDetails();
 }

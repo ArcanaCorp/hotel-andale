@@ -13,6 +13,7 @@ import { Stack } from "expo-router";
 import Providers from "../providers";
 import { useProfile } from "../context/ProfileContext";
 import { useLicense } from "../context/LicenseContext";
+import AutoBackupManager from "../components/AutoBackupManager";
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -30,21 +31,24 @@ function Routes({ fontsReady }) {
     if (loading || error) return null;
 
     return (
-        <Stack screenOptions={{ headerShown: false }}>
-            <Stack.Screen name="index" />
+        <>
+            <AutoBackupManager/>
+            <Stack screenOptions={{ headerShown: false }}>
+                <Stack.Screen name="index" />
 
-            <Stack.Protected guard={!active}>
-                <Stack.Screen name="activation" />
-            </Stack.Protected>
+                <Stack.Protected guard={!active}>
+                    <Stack.Screen name="activation" />
+                </Stack.Protected>
 
-            <Stack.Protected guard={active && !profile?.isConfigured}>
-                <Stack.Screen name="onboarding" />
-            </Stack.Protected>
+                <Stack.Protected guard={active && !profile?.isConfigured}>
+                    <Stack.Screen name="onboarding" />
+                </Stack.Protected>
 
-            <Stack.Protected guard={active && !!profile?.isConfigured}>
-                <Stack.Screen name="(tabs)" />
-            </Stack.Protected>
-        </Stack>
+                <Stack.Protected guard={active && !!profile?.isConfigured}>
+                    <Stack.Screen name="(tabs)" />
+                </Stack.Protected>
+            </Stack>
+        </>
     );
 }
 

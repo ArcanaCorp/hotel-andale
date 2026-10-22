@@ -510,6 +510,7 @@ const styles = StyleSheet.create({
         borderWidth: 1,
         borderColor: C.border,
         borderRadius: 12,
+        backgroundColor: tokens.colors.white,
     },
     loading: {
         paddingVertical: 60,
@@ -529,6 +530,7 @@ const styles = StyleSheet.create({
         borderRadius: 14,
         padding: 15,
         gap: 10,
+        backgroundColor: tokens.colors.white,
     },
     section: {
         gap: 14,
@@ -544,6 +546,7 @@ const styles = StyleSheet.create({
         borderRadius: 14,
         padding: 16,
         gap: 15,
+        backgroundColor: tokens.colors.white,
     },
     summaryRow: {
         flexDirection: "row",

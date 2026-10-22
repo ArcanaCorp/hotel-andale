@@ -141,7 +141,7 @@ export default function IndexTab() {
                     </View>
 
                     <View style={styles.actionsGrid}>
-                        <QuickAction title="Check-in" icon={DoorClosed} onPress={() => router.push("/rooms")} />
+                        <QuickAction title="Check-in" icon={DoorClosed} onPress={() => router.push("/stays/check-in")} />
                         <QuickAction title="Reservar" icon={CalendarPlus} onPress={() => router.push("/bookings")} />
                         <QuickAction title="Habitaciones" icon={BedDouble} onPress={() => router.push("/rooms")} />
                         <QuickAction title="Cobros" icon={Wallet} onPress={() => router.push("/management")} />
