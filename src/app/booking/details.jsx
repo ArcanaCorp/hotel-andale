@@ -1,11 +1,12 @@
 import { useCallback, useState } from "react";
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
-import { ArrowLeft, BedDouble, CalendarDays, CheckCircle2, CreditCard, LogIn, LogOut, QrCode, XCircle } from "lucide-react-native";
+import { ArrowLeft, BedDouble, CalendarDays, CheckCircle2, CreditCard, LogIn, LogOut, QrCode, XCircle, ChevronRight, Wallet, ReceiptText } from "lucide-react-native";
 
 import ScreenTab from "../../components/ui/ScreenTab";
 import TextField from "../../components/ui/TextField";
 import Button from "../../components/ui/Button";
+import BottomSheet from "../../components/ui/BottomSheet";
 import { tokens } from "../../styles/tokens";
 import { getDatabase } from "../../database";
 import { registerPayment } from "../../database/repositories/payments.repository";
@@ -29,6 +30,18 @@ function dateLabel(value) {
 }
 function Info({ label, value }) {
     return <View style={styles.info}><TextField label={label} size="xs" color="gray"/><TextField label={String(value ?? "—")} size="sm" weight="semibold"/></View>;
+}
+function MenuAction({ title, subtitle, Icon, onPress, disabled = false, danger = false }) {
+    return (
+        <Pressable disabled={disabled} onPress={onPress} style={({ pressed }) => [styles.menuAction, pressed && { opacity: 0.65 }, disabled && { opacity: 0.45 }]}>
+            <View style={[styles.menuIcon, danger && styles.menuIconDanger]}><Icon size={19} color={danger ? C.red : C.black}/></View>
+            <View style={{ flex: 1, gap: 3 }}>
+                <TextField label={title} size="sm" weight="semibold" style={danger ? { color: C.red } : undefined}/>
+                {!!subtitle && <TextField label={subtitle} size="xs" color="gray"/>}
+            </View>
+            <ChevronRight size={18} color={C.gray}/>
+        </Pressable>
+    );
 }
 function Section({ title, children }) {
     return <View style={styles.card}><TextField label={title} size="md" weight="bold"/><View style={styles.sectionBody}>{children}</View></View>;
@@ -175,25 +188,40 @@ export default function BookingDetails() {
             <View style={styles.moneyRow}><TextField label="Abonado neto" size="sm" color="gray"/><TextField label={money(paidCents)} size="sm" weight="semibold"/></View>
             <View style={styles.balance}><TextField label={balanceCents >= 0 ? "Saldo pendiente" : "Saldo a favor"} size="xs" color="gray"/><TextField label={money(Math.abs(balanceCents))} size="2xl" weight="bold"/></View>
             {payments.length > 0 ? payments.map(p => <View key={p.id} style={styles.paymentLine}><View style={{ flex: 1 }}><TextField label={`${p.type === "REFUND" ? "Devolución" : "Cobro"} · ${METHODS.find(m => m.value === p.method)?.label || p.method}`} size="sm" weight="medium"/><TextField label={`${dateLabel(p.created_at)}${p.reference ? ` · Ref. ${p.reference}` : ""}`} size="xs" color="gray"/></View><TextField label={`${p.type === "REFUND" ? "−" : "+"}${money(p.amount_cents)}`} size="sm" weight="semibold"/></View>) : <TextField label="Todavía no hay pagos registrados." size="xs" color="gray"/>}
-            {balanceCents > 0 && ["PENDING", "CONFIRMED", "CHECKED_IN"].includes(b.status) && <Button text={paymentOpen ? "Cerrar formulario" : "Registrar pago"} icon={CreditCard} onPress={() => { setPaymentOpen(v => !v); setAmount((Math.max(balanceCents, 0) / 100).toFixed(2)); }}/>} 
-            {paymentOpen && <View style={styles.paymentForm}>
-                <TextField label="Nuevo cobro" size="md" weight="bold"/>
-                <TextField label="Importe (S/)" size="xs" color="gray"/>
-                <TextInput style={styles.input} keyboardType="decimal-pad" placeholder="0.00" value={amount} onChangeText={setAmount}/>
-                <TextField label="Método de pago" size="xs" color="gray"/>
-                <View style={styles.methodList}>{METHODS.map(m => <Pressable key={m.value} onPress={() => setMethod(m.value)} style={[styles.method, method === m.value && styles.methodActive]}><TextField label={m.label} size="xs" weight={method === m.value ? "bold" : "medium"}/></Pressable>)}</View>
-                {method !== "CASH" && <><TextField label="Referencia / número de operación" size="xs" color="gray"/><TextInput style={styles.input} value={reference} onChangeText={setReference} placeholder="Número de operación"/></>}
-                <TextField label="El sistema exige una caja abierta para registrar cobros." size="xs" color="gray"/>
-                <Button text="Guardar cobro" disabled={busy} loading={busy} onPress={savePayment}/>
-            </View>}
         </Section>
         <Section title="Acciones">
-            {b.status === "PENDING" && <Button text="Confirmar reserva" icon={CheckCircle2} disabled={busy} onPress={confirmReservation}/>}
-            {canCheckIn && <Button text="Realizar check-in" icon={LogIn} disabled={busy} onPress={() => router.push({ pathname: "/stays/check-in-details", params: { reservationId: String(id) } })}/>}
-            {canCheckOut && <Button text="Ir a check-out" icon={LogOut} disabled={busy} onPress={() => router.push({ pathname: "/stays/check-out", params: { stayId: String(stay.id) } })}/>}
-            <Button text="Ver / Compartir entrada QR" icon={QrCode} variant="secondary" onPress={() => router.push({ pathname: "/booking/confirmation", params: { id: String(id) } })}/>
-            {canManage && <Button text="Cancelar reserva" icon={XCircle} variant="dangerSoft" disabled={busy} onPress={cancelReservation}/>}
+            {balanceCents > 0 && ["PENDING", "CONFIRMED", "CHECKED_IN"].includes(b.status) && (
+                <MenuAction title="Registrar pago" subtitle="Abono o pago total de la reserva" Icon={Wallet} disabled={busy} onPress={() => { setAmount((Math.max(balanceCents, 0) / 100).toFixed(2)); setMethod("CASH"); setReference(""); setPaymentOpen(true); }}/>
+            )}
+
+            {b.status === "PENDING" && <MenuAction title="Confirmar reserva" subtitle="Cambiar el estado a confirmada" Icon={CheckCircle2} disabled={busy} onPress={confirmReservation}/>}
+            {canCheckIn && <MenuAction title="Realizar check-in" subtitle="Registrar el ingreso del huésped" Icon={LogIn} disabled={busy} onPress={() => router.push({ pathname: "/stays/check-in-details", params: { reservationId: String(id) } })}/>}
+            {canCheckOut && <MenuAction title="Realizar check-out" subtitle="Revisar saldo y finalizar estadía" Icon={LogOut} disabled={busy} onPress={() => router.push({ pathname: "/stays/check-out", params: { stayId: String(stay.id) } })}/>}
+            <MenuAction title="Ver y compartir entrada" subtitle="Abrir comprobante con código QR" Icon={QrCode} onPress={() => router.push({ pathname: "/booking/confirmation", params: { id: String(id) } })}/>
+            {canManage && <MenuAction title="Cancelar reserva" subtitle="La reserva permanecerá en el historial" Icon={XCircle} danger disabled={busy} onPress={cancelReservation}/>}
         </Section>
+        <BottomSheet visible={paymentOpen} title="Registrar pago" busy={busy} onClose={() => setPaymentOpen(false)}>
+            <View style={styles.sheetSummary}>
+                <TextField label="Saldo pendiente" size="xs" color="gray"/>
+                <TextField label={money(balanceCents)} size="2xl" weight="bold"/>
+            </View>
+            <TextField label="Importe a cobrar (S/)" size="sm" weight="medium"/>
+            <TextInput style={styles.input} keyboardType="decimal-pad" placeholder="0.00" value={amount} onChangeText={setAmount}/>
+            <TextField label="Método de pago" size="sm" weight="medium"/>
+            <View style={styles.methodList}>
+                {METHODS.map(m => (
+                    <Pressable key={m.value} onPress={() => setMethod(m.value)} style={[styles.method, method === m.value && styles.methodActive]}>
+                        <TextField label={m.label} size="sm" weight={method === m.value ? "semibold" : "medium"}/>
+                    </Pressable>
+                ))}
+            </View>
+            {method !== "CASH" && <>
+                <TextField label="Referencia / número de operación" size="sm" weight="medium"/>
+                <TextInput style={styles.input} value={reference} onChangeText={setReference} placeholder="Número de operación"/>
+            </>}
+            <TextField label="Para registrar cobros debe existir una caja abierta." size="xs" color="gray"/>
+            <Button text="Registrar cobro" variant="secondary" disabled={busy} loading={busy} onPress={savePayment} fullWidth/>
+        </BottomSheet>
     </ScreenTab>;
 }
 
@@ -208,9 +236,12 @@ const styles = StyleSheet.create({
     moneyRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 12 },
     balance: { backgroundColor: C.light, padding: 16, borderRadius: 12, gap: 5 },
     paymentLine: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 10, borderTopWidth: 1, borderTopColor: C.border },
-    paymentForm: { gap: 10, paddingTop: 12, borderTopWidth: 1, borderTopColor: C.border },
+    sheetSummary: { padding: 16, backgroundColor: C.light, borderRadius: 14, gap: 5 },
+    menuAction: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 11, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.border },
+    menuIcon: { width: 42, height: 42, borderRadius: 12, backgroundColor: C.light, alignItems: "center", justifyContent: "center" },
+    menuIconDanger: { backgroundColor: "#fef2f2" },
     input: { borderWidth: 1, borderColor: C.border, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 11, color: C.black, fontSize: 15 },
     methodList: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
     method: { paddingVertical: 10, paddingHorizontal: 12, backgroundColor: C.light, borderRadius: 10, borderWidth: 1, borderColor: C.border },
-    methodActive: { borderColor: C.primary, backgroundColor: "#eef2ff" },
+    methodActive: { borderColor: C.black, backgroundColor: "#e4e4e7" },
 });
