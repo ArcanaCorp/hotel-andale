@@ -649,7 +649,7 @@ export default function PaymentsScreen() {
             {/* SELECCIONAR RESERVA */}
             <BottomSheet
                 visible={reservationSheet}
-                title="Seleccionar reserva"
+                title="Seleccionar cuenta"
                 onClose={() =>
                     setReservationSheet(false)
                 }
@@ -657,14 +657,14 @@ export default function PaymentsScreen() {
                 <View style={styles.sheet}>
                     {reservations.length === 0 ? (
                         <TextField
-                            label="No hay reservas con saldo pendiente."
+                            label="No hay reservas ni estadías con saldo pendiente."
                             size="sm"
                             color="gray"
                         />
                     ) : (
                         reservations.map(item => (
                             <Pressable
-                                key={item.id}
+                                key={item.account_key}
                                 style={styles.reservationRow}
                                 onPress={() =>
                                     selectReservation(item)
